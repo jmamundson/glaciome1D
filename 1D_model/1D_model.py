@@ -74,7 +74,7 @@ def granular_fluidity(x,U,H,dx):
 # # calculate mu by integrating (alternative appraoch to 1D equations)
 # def calc_mu(x,H,W,dx):
        
-#     integrand = (2*H-H_L)*np.gradient(H,x)+2*(mu0/W)*H**2
+#     integrand = (2*H-d)*np.gradient(H,x)+2*(mu0/W)*H**2
     
 #     integral = -np.append(0,integrate.cumtrapz(integrand[::-1], dx=dx))[::-1]
     
@@ -132,7 +132,7 @@ def granular_fluidity(x,U,H,dx):
 # H += (B - np.gradient(U*H*W,dx)/W)*dt
 
 # use integral to solve directly for 1-D case...
-    #integrand = (2*H-H_L)*np.gradient(H,x)+2*(mu0/W)*H**2
+    #integrand = (2*H-d)*np.gradient(H,x)+2*(mu0/W)*H**2
 
     # int_x^L f(x) dx = -int_L^x f(x) dx; need to reverse the order twice to do this numerically...
     #integral = np.append(0,integrate.cumtrapz(-integrand[::-1], dx=dx))
@@ -152,15 +152,14 @@ g = 9.81 # gravity
 B = -10/secsYear # mass balance rate in m/s
 
 d = 25 # characteristic iceberg size
-H_L = d # ice melange terminus is same as characteristic iceberg size
 
 L = 1e4 # melange length
 dx = 10 # grid spacing
 x = np.arange(0,L+dx,dx) # longitudinal grid
 W = 5000*np.ones(x.shape) # melange width; treated as constant for now
 
-#H = (-200/L*x + 200) + H_L
-H = -200*(x/L-1) + H_L # initial melange thickness
+#H = (-200/L*x + 200) + d
+H = -200*(x/L-1) + d # initial melange thickness
 #H = np.ones(x.shape)*(d) # melange thickness
 Ut = 5000/secsYear # glacier terminus velocity
 
@@ -197,7 +196,7 @@ def velocity(x,U,H,dx):
         # constructing matrix Cx = T to solve for velocity
         # if gg = 0 > modify matrix C so that each line with gg=0 indicates that dU/dx = 0 
         T = np.zeros(len(x))
-        T[1:ind-1] = ((2*H[:-1]-H_L)*(H[1:]-H[:-1])*dx + 2*mu0/W[:-1]*H[:-1]**2*dx**2)[1:ind-1]
+        T[1:ind-1] = ((2*H[:-1]-d)*(H[1:]-H[:-1])*dx + 2*mu0/W[:-1]*H[:-1]**2*dx**2)[1:ind-1]
         T[0] = Ut # upstream boundary moves at terminus velocity
         T[-1] = 0 # strain rate equals zero at downstream boundary
         #T[T<0] = 0 # TEMPORARY FIX --> PROBLEM WHEN mu0 IS TOO LARGE???
