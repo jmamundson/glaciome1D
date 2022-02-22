@@ -17,8 +17,8 @@ def granular_fluidity(x,U,H,dx):
     # need to iterate because sign(exx) is not necessarily always the same
     
     # constants
-    b = 2e15
-    A = 1
+    b = 2e6
+    A = 0.5
 
     ee = np.abs(np.gradient(U,dx))
     mu = 0.5*np.ones(len(x)) # initial guess for mu
@@ -37,11 +37,11 @@ def granular_fluidity(x,U,H,dx):
         #    dg/dx=0 at x=0,L (implies strain rate gradient equals 0)
         
         c_left = np.ones(len(x)-1)
-        #c_left[-1] = 0
+        c_left[-1] = 0
         
         c = -(2+zeta*dx**2)
         c[0] = -1
-        c[-1] = -1
+        c[-1] = 1
             
         c_right = np.ones(len(x)-1)
             
@@ -55,7 +55,7 @@ def granular_fluidity(x,U,H,dx):
         gg_new = np.linalg.solve(C,T) # solve for granular fluidity
      
         
-        if (np.abs(gg-gg_new) > 1e-5).any():        
+        if (np.abs(gg-gg_new) > 1e-6).any():        
             print(np.max(np.abs(gg-gg_new)))
             gg = gg_new
             #gg[gg==0] = 1e-10 # small factor to make mu real; doesn't do anything because gg=0 when ee=0, so mu=0 in this case
@@ -101,7 +101,7 @@ def velocity(x,U,H,W,dx):
         #T[T<0] = 0 # TEMPORARY FIX --> PROBLEM WHEN mu0 IS TOO LARGE???
         
         # create staggered grid, using linear interpolation
-        xn = np.arange(dx/2,x[-1]+dx/2,dx)
+        xn = np.arange(x[0]+dx/2,x[-1]+dx/2,dx)
         Hn = np.interp(xn,x,H)
         ggn = np.interp(xn,x,gg)
         
@@ -133,45 +133,42 @@ def velocity(x,U,H,W,dx):
         else:
             U = U_new
             break
-        
+               
     return(U)
 
 
 #%%
 secsDay = 86400
 secsYear = secsDay*365.25
-dt = secsDay*0.1
+dt = secsDay*1
 
 rho = 917 # density of ice
 rho_w = 1028 # density of water
 
 g = 9.81 # gravity
 
-B = -10/secsYear # mass balance rate in m/s
+B = 0/secsYear # mass balance rate in m/s
 
 d = 25 # characteristic iceberg size
 
-L = 1e4 # melange length
+x0 = 100
+L = 1e4+x0 # melange length
 dx = 100 # grid spacing
-x = np.arange(0,L+dx,dx) # longitudinal grid
+x = np.arange(x0,L+dx,dx) # longitudinal grid
 W = 5000*np.ones(x.shape) # melange width; treated as constant for now
 
 #H = (-200/L*x + 200) + d
-H = -200*(x/L-1) + d # initial melange thickness
+H = -100*(x/L-1) + d # initial melange thickness
 #H = np.ones(x.shape)*(d) # melange thickness
 Ut = 5000/secsYear # glacier terminus velocity
 
 
 # max and min effective coefficients of friction, sort of
-muW = 0.6
-muS = 0.2
+muW = 0.8
+muS = 0.4
 
 
-#U = np.zeros(len(x))
-#U[0:5] = Ut
-
-
-U=Ut*(1-x/L)
+U = Ut*np.ones(len(x)) # initial guess for the velocity
 
 
 
@@ -185,13 +182,17 @@ ax2 = plt.subplot(212)
 ax2.set_xlabel('Longitudinal coordinate [m]')
 ax2.set_ylabel('Thickness [m]')
 
-k = 1
-for k in np.arange(0,1000):
-    
-    ax1.plot(x,U*secsYear)
-    ax2.plot(x,H)
-    
+color_id = np.linspace(0,1,100) 
+
+
+for k in np.arange(0,100):
+         
     U = velocity(x,U,H,W,dx)
+    
+    if k % 10 == 0:
+        ax1.plot(x,U*secsYear,color=plt.cm.viridis(color_id[k]))
+        ax2.plot(x,H,color=plt.cm.viridis(color_id[k]))
+    
     # update thickness
     H += (B-np.gradient(H*W*U,x)/W)*dt
     
@@ -209,12 +210,4 @@ for k in np.arange(0,1000):
 
 
 plt.tight_layout()
-
-
-#ee = np.abs(np.gradient(U,x))
-
-#mu = ee/gg
-#gg = ee/mu # gg = granular fluidity; ee = second invariant of strain rate tensor
-
-
 
