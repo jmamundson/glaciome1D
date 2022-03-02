@@ -3,7 +3,7 @@ from matplotlib import pyplot as plt
 from scipy.sparse import diags
 
 import scipy.integrate as integrate
-
+from scipy.interpolate import interp1d
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -96,17 +96,17 @@ x = np.arange(x0,L+dx,dx) # longitudinal grid
 W = 5000*np.ones(x.shape) # melange width; treated as constant for now
 
 #H = (-200/L*x + 200) + d
-H = -200*(x/L-1) + d # initial melange thickness
+H = -150*(x/L-1) + d # initial melange thickness
 #H = np.ones(x.shape)*(d) # melange thickness
 Ut = 5000/secsYear # glacier terminus velocity
 
 
 # max and min effective coefficients of friction, sort of
-mu0 = 0.5
+mu0 = 0.6
 muS = 0.2
 I0 = 10**-7
 
-U = Ut*np.ones(len(x)) # initial guess for the velocity
+U = Ut*(1+0*x/L) #np.ones(len(x)) # initial guess for the velocity
 
 
 
@@ -133,9 +133,11 @@ for k in np.arange(0,n):
         ax1.plot(x,U*secsYear,color=plt.cm.viridis(color_id[k]))
         ax2.plot(x,H,color=plt.cm.viridis(color_id[k]))
     
+    dHdt = (B-np.gradient(H*W*U,x)/W)
+    #dHdt[-1] = 0
     # update thickness
-    H += (B-np.gradient(H*W*U,x)/W)*dt
-    
+    H += dHdt*dt
+    #H[:-1] += (B-np.diff(H*W*U)/W[:-1]/dx)*dt
     
     # update grid
     x0 = x[0]+Ut*dt
@@ -143,8 +145,13 @@ for k in np.arange(0,n):
 
     xg = np.linspace(x0,xL,len(x))
     dx = x[1]-x[0]
-    H = np.interp(xg, x, H)
-    U = np.interp(xg, x, U)
+    
+    H_interp1d = interp1d(x, H, kind='linear', fill_value='extrapolate') #, right=d) # linear extrapolation???
+    H = H_interp1d(xg)
+    
+    U_interp1d = interp1d(x, U, kind='linear', fill_value='extrapolate')
+    U = U_interp1d(xg)
+    
     W = np.interp(xg, x, W)
     x = xg
 
