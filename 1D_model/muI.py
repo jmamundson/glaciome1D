@@ -3,9 +3,11 @@
 import numpy as np
 from scipy import sparse
 from scipy.optimize import fsolve
+from scipy.sparse import diags
 
 from config import *
 
+from matplotlib import pyplot as plt
 
 #%% convert effective pressure to ice melange thickness in quasi-static case
 def thickness(W,L,H_L,mu0):
@@ -114,11 +116,11 @@ def transverse(H, W, muS, muW, mu0, d, I0):
 #%% 
 # determine the coefficient of friction in the mu(I) rheology; only accounting for longitudinal strain rates
 
-def mu(x,U,H,dx):
+def calc_mu(x,U,H,dx):
 
     dee = 1e-15 # finite strain rate to prevent infinite viscosity
     # fix later; could modify equations so that dU/dx = 0 if ee=0.
-    ee = np.sqrt(np.gradient(U,dx)**2)+dee # second invariant of strain rate
+    ee = np.sqrt(np.gradient(U,dx)**2/2)+dee # second invariant of strain rate
 
     I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*H))
     mu = muS + I*(mu0-muS)/(I0+I)
@@ -127,7 +129,7 @@ def mu(x,U,H,dx):
     xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
     nu = np.interp(xn,x,mu/ee*H**2) # create new variable on staggered grid to simplify later
 
-    return(nu, mu)
+    return(nu, mu, ee)
 
     
 #%%
@@ -136,11 +138,90 @@ def mu(x,U,H,dx):
 def muW_minimize(muW, H, W, U):
     
     _, _, u_mean = transverse(H, W, muS, muW, mu0, d, I0)
+    
+    # take into account that flow might be in the negative direction
+    if U<0:
+        u_mean = -u_mean
+        
     du = np.abs(U-u_mean)    
     return(du)
 
 
+#%%
+def velocity(x,Ut,U,H,W,dx):
+    
+    # U is the initial guess for the velocity
+    # plt.figure(figsize=(10,8))
+    # ax1 = plt.subplot(311)
+    # ax2 = plt.subplot(312)
+    # ax3 = plt.subplot(313)
 
+    muW = muW_*np.ones(x.shape)
+    
+    j = 1
+    while j==1:
+        
+       #print(U[-1]*secsDay)
+        nu, mu, ee = calc_mu(x,U,H,dx)
+        #nu, mu = granular_fluidity(x,U,H,dx)                   
+        
+        # calculate mu_w given the current velocity profile
+        
+        for k in range(len(muW)):
+            result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]*secsDay),  method='COBYLA', constraints=[muI_constraint], tol=1e-6)#, options={'disp': True})
+            muW[k]  = result.x
+        
+        # ax1.plot(x,muW)
+        # ax1.set_ylim([muS-0.1, mu0+0.1])
+        # ax2.plot(x,mu,'--')
+        # ax2.set_ylim([muS-0.1, mu0+0.1])
+        # ax3.plot(x,U*secsDay)
+        # ax3.set_ylim([0, 50])
+        #plt.semilogy(nu)
+        
+        
+        # I think there is a static vs kinetic friction issue here...
+        # if muW = muS => dU/dy = 0 which means that U = 0
+        # but that's not what's happening
+        
+        # constructing matrix Dx = T to solve for velocity        
+        T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+        T[0] = Ut # upstream boundary moves at terminus velocity
+        T = np.append(T,0)#(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
+                      
+        
+        A = nu[:-1]
+        B = -(nu[:-1]+nu[1:])
+        C = nu[1:]
+
+        # use a_left, a, and a_right define the diagonals of D
+        a_left = np.append(A, -1)
+        
+        a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
+        a[1:-1] = B
+        a[-1] = 1
+                                   
+        a_right = np.append(0,C)
+        
+          
+        # print('a: ' + str(len(a)))
+        # print('a_left: ' + str(len(a_left)))
+        # print('a_right: ' + str(len(a_right)))
+        
+        diagonals = [a_left,a,a_right]
+        D = diags(diagonals,[-1,0,1]).toarray() 
+         
+        U_new = np.linalg.solve(D,T) # solve for velocity
+       
+        
+        if (np.abs(U-U_new)*secsDay > 1).any():        
+            dU = U-U_new
+            U = U - dU
+        else:
+            U = U_new
+            break
+               
+    return(U, mu, muW)
 #%%
 
 # H = 100
