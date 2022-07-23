@@ -7,8 +7,8 @@ from scipy.interpolate import interp1d
 
 from config import *
 
-#import muI
-import granular_fluidity
+import muI
+#import granular_fluidity
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -21,25 +21,20 @@ Created on Fri Feb 11 11:27:08 2022
 
 #%%
 
+dt = secsDay*1 # time step [s]
 
-dt = secsDay*1
+B = 0/secsYear # mass balance rate [m s^-1]
 
-B = 0/secsYear # mass balance rate in m/s
-
-x0 = 0
-L = 3e3+x0 # melange length
-dx = 100 # grid spacing
+x0 = 0 # left boundary of the melange [m]
+L = 5e3+x0 # initial ice melange length [m]
+dx = 100 # grid spacing [m]
 x = np.arange(x0,L+dx,dx) # longitudinal grid
-W = 5000*np.ones(x.shape) # melange width; treated as constant for now
-muW = muS*np.ones(x.shape)
+W = 5000*np.ones(x.shape) # fjord width [m]; treated as constant for now
 
+H = np.ones(x.shape)*(d) # initial ice melange thickness [m]
 
-#H = (-200/L*x + 200) + d
-#H = -50*(x/L-1) + d # initial melange thickness
-H = np.ones(x.shape)*(d) # melange thickness
-
-Ut = 10000/secsYear # glacier terminus velocity
-U = Ut*(1+x/L) # initial guess for the velocity
+Ut = 10000/secsYear # width-averaged glacier terminus velocity [m s^-1]
+U = Ut*(1+x/L) # initial guess for the width-averaged velocity [m s^-1]
 
 
 #%%
@@ -64,41 +59,33 @@ ax4.set_xlabel('Longitudinal coordinate [m]')
 ax4.set_ylabel('$\mu_w$')
 ax4.set_ylim([0.1, 0.7])
 
-n = 500 # number of time steps
+n = 50 # number of time steps
 color_id = np.linspace(0,1,n) 
 
 
 for k in np.arange(0,n):
     print(k*dt/secsDay)     
-    U, mu, muW = granular_fluidity.velocity(x,Ut,U,H,W,dx)
+    U, mu, muW = muI.velocity(x,Ut,U,H,W,dx)
              
     
-    dHdt = (B-np.gradient(H*W*U,x)/W)
-    #dHdt[-1] = 0
-    # update thickness
-    H += dHdt*dt
-    #H[:-1] += (B-np.diff(H*W*U)/W[:-1]/dx)*dt
-    
-            
-    # # update grid
-    # x0 = x[0]+Ut*dt
-    # xL = x[-1]+U[-1]*dt
-
-    # xg = np.linspace(x0,xL,len(x))
-    # dx = x[1]-x[0]
-    
-    # # this interpolation needs some thought!
-    # H_interp1d = interp1d(x, H, kind='linear', fill_value='extrapolate') #, right=d) # linear extrapolation???
-    # H = H_interp1d(xg)
-    
-    # U_interp1d = interp1d(x, U, kind='linear', fill_value='extrapolate')
-    # U = U_interp1d(xg)
-    
-    # W = np.interp(xg, x, W)
-    # x = xg
+    # UPDATE THE ICE MELANGE THICKNESS USING MASS CONTINUITY
+    # 1) use central differences to calculate rate of thickness change; 
+    # second order accurate at the boundaries (using
+    # ghost points?)
+    # 2) update the thickness using an explicit time step
+    dHdt = (B-np.gradient(H*W*U, x, edge_order=2)/W) # rate of thickness change
+    H += dHdt*dt # new thickness
+        
+    # UPDATE THE GRID
+    # 1) move each grid point forward using the calculated velocity
+    # 2) create a new grid
+    # 3) interpolate variables to the new, evenly spaced grid
+    #L = L + (U[-1]-Ut)*dt
     
     x = x+U*dt
     xg = np.linspace(x[0],x[-1],len(x))
+    
+    #xg = np.linspace(x[0],L,len(x))
     
     H_interp1d = interp1d(x,H,kind='linear', fill_value='extrapolate')
     U_interp1d = interp1d(x, U, kind='linear', fill_value='extrapolate')
@@ -111,7 +98,7 @@ for k in np.arange(0,n):
     x = xg
     
 
-    if k % 10 == 0:
+    if k % 2 == 0:
         ax1.plot(x,U*secsYear,color=plt.cm.viridis(color_id[k]))
         ax2.plot(x,H,color=plt.cm.viridis(color_id[k]))
         ax3.plot(x,mu,color=plt.cm.viridis(color_id[k]))
