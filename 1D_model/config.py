@@ -33,6 +33,10 @@ I0 = 10**-6
 
 # parameters for granular fluidity rheology
 #muS = 0.2
-A = 1
-b = 2e5 
-nonlocal_constraint = LinearConstraint([1], muS, muS*100)
+A = 0.00001
+b = 2e4 
+nonlocal_constraint = LinearConstraint([1], muS, mu0)
+
+    # constants --> Needs some thought!
+    #b = (mu0-muS)/I0
+    #A = 0.5

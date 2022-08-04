@@ -4,173 +4,37 @@ import numpy as np
 from scipy import sparse
 from scipy.optimize import fsolve
 from scipy.sparse import diags
+from scipy.optimize import minimize
 
 from config import *
 
+from general_utilities import pressure
+
 from matplotlib import pyplot as plt
 
-#%% calculate the effective pressure driving flow
-
-# W = ice melange width
-# L = ice melange length
-# mu0 = coefficient of friction at yield stress
-def pressure(H):
-    
-    P = 0.5*rho*g*(1-rho/rho_w)*H
-    
-    return(P)
-
-#%%
-
-def calc_mu(x,U,H,dx):
-    
-    # note: use strain rate to compute mu, which is used to compute g'
-    # need to iterate because sign(exx) is not necessarily always the same
-    
-    # constants --> Needs some thought!
-    #b = (mu0-muS)/I0
-    #A = 0.5
-
-    dee = 1e-15 # finite strain rate to prevent infinite viscosity
-    ee = np.abs(np.gradient(U,dx)/2)+dee
-    mu = 0.5*np.ones(len(x)) # initial guess for mu
-    gg = ee/mu
-    
-    k = 1
-    while k==1: 
-        
-        g_loc = np.zeros(len(x))
-        g_loc[mu>muS] = np.sqrt(0.5*g*(1-rho/rho_w)*H[mu>muS]/d**2)*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
-        
-        zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
-    
-        # construct equation Cx=T
-        # boundary conditions: 
-        #    # g=0 at x=0, L (implies strain rate = 0)
-        #    dg/dx=0 at x=0,L (implies strain rate gradient equals 0)
-        
-        c_left = np.ones(len(x)-1)
-        c_left[-1] = -1
-        
-        c = -(2+zeta*dx**2)
-        c[0] = -1
-        c[-1] = 1
-            
-        c_right = np.ones(len(x)-1)
-            
-        diagonals = [c_left,c,c_right]
-        C = diags(diagonals,[-1,0,1]).toarray() 
-        
-        T = -g_loc*zeta*dx**2
-        T[0] = 0
-        T[-1] = 0
-            
-        gg_new = np.linalg.solve(C,T) # solve for granular fluidity
-     
-        #print(np.max(np.abs(gg-gg_new)))
-        #print(k)
-        if (np.abs(gg-gg_new) > 1e-6).any():        
-        #if np.max(np.abs(gg-gg_new)) > 1e-10:
-            #print(np.max(np.abs(gg-gg_new)))
-            gg = gg_new
-            gg[gg==0] = 1e-6 # small factor to make mu real; doesn't do anything because gg=0 when ee=0, so mu=0 in this case
-            mu = ee/gg   
-        else:
-            gg = gg_new
-            gg[gg==0] = 1e-6
-            mu = ee/gg
-            xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1)
-            nu = np.interp(xn,x,H**2/gg) # create new variable on staggered grid to simplify later
-            
-            break
-        
-    return(nu, mu, ee)
-    
-    
-#%%
-def velocity(x,Ut,U,H,W,dx):
-    
-    # U is the initial guess for the velocity
-    # plt.figure(figsize=(10,8))
-    # ax1 = plt.subplot(311)
-    # ax2 = plt.subplot(312)
-    # ax3 = plt.subplot(313)
-
-    muW = muW_*np.ones(x.shape)
-    
-    j = 1
-    while j==1:
-        
-        #print(U[-1]*secsDay)
-        nu, mu, ee = calc_mu(x,U,H,dx)
-        #nu, mu = granular_fluidity(x,U,H,dx)                   
-        
-        # calculate mu_w given the current velocity profile
-        
-        for k in range(len(muW)):
-            result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
-            muW[k] = result.x
-        
-        # ax1.plot(x,muW)
-        # ax1.set_ylim([muS-0.1, mu0+0.1])
-        # ax2.plot(x,mu,'--')
-        # ax2.set_ylim([muS-0.1, mu0+0.1])
-        # ax3.plot(x,U*secsDay)
-        # ax3.set_ylim([-300, 300])
-        #plt.semilogy(nu)
-        
-        
-        # I think there is a static vs kinetic friction issue here...
-        # if muW = muS => dU/dy = 0 which means that U = 0
-        # but that's not what's happening
-        
-        # constructing matrix Dx = T to solve for velocity        
-        T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
-        T[0] = Ut # upstream boundary moves at terminus velocity
-        T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
-                      
-        
-        A = nu[:-1]
-        B = -(nu[:-1]+nu[1:])
-        C = nu[1:]
-
-        # use a_left, a, and a_right define the diagonals of D
-        a_left = np.append(A, -1)
-        
-        a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
-        a[1:-1] = B
-        a[-1] = 1
-                                   
-        a_right = np.append(0,C)
-        
-          
-        # print('a: ' + str(len(a)))
-        # print('a_left: ' + str(len(a_left)))
-        # print('a_right: ' + str(len(a_right)))
-        
-        diagonals = [a_left,a,a_right]
-        D = diags(diagonals,[-1,0,1]).toarray() 
-         
-        U_new = np.linalg.solve(D,T) # solve for velocity
-        
-       
-        print('dU: ' + str(np.max(np.abs(U-U_new))*secsYear) + ' m/yr')
-        
-        if (np.abs(U-U_new)*secsYear > 1).any():        
-            dU = U-U_new
-            U = U - dU
-            #U = U_new
-        else:
-            U = U_new
-            break
-               
-    return(U, mu, muW)
-        
-
 #%% solve transverse velocity for nonlocal rheology
-
-# A and b are dimensionless parameters
 def transverse(W,muS,muW,H,d,A,b): 
+    '''
+    Calculates transverse velocity profiles for the nonlocal granular fluidity
+    rheology. See Amundson and Burton (2018) for details.
+
+    Parameters
+    ----------
+    W : fjord width [m]
+    muS : effective coefficient of friction at the yield stress (?)
+    muW : effective coefficient of friction along the fjord walls
+    H : ice melange thickness [m]
+    d : characteristic grain size [m]
+    A : dimensionless constant referred to as the nonlocal amplitude
+    b : dimensionless constant
+
+    Returns
+    -------
+    y : transverse coordinate [m]
+    u : velocity at y, assuming no slip along the boundary [m s^-1]
+    u_mean : mean velocity across the profile, assuming no slip along the boundary [m s^-1]
+
+    '''
     
     P = pressure(H)
     
@@ -232,16 +96,37 @@ def transverse(W,muS,muW,H,d,A,b):
     u = np.linalg.solve(D,f)
     u = u*secsDay
     
-    
     u_mean = np.mean(u)
     
     return(y,u,u_mean)
 
-
 #%%
 # needed for determining muW 
+def calc_muW(muW, H, W, U):
+    '''
+    Compares the velocity from the longitudinal flow model to the width-averaged
+    velocity from the transverse profile, for given coefficients of friction
+    and geometry. For low velocities, there is relatively little deformation and
+    muW will be small. For high velocities, muW will be high. There is no slip
+    along the fjord walls since the model doesn't assume an upper end to muW.
 
-def muW_minimize(muW, H, W, U):
+    The minimimization is run during "velocity":
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]*secsDay),  method='COBYLA', constraints=[muI_constraint], tol=1e-6)#, options={'disp': True})
+        muW[k]  = result.x
+
+    Parameters
+    ----------
+    muW : effective coefficient of friction along the fjord walls
+    H : ice melange thickness [m]
+    W : fjord width [m]
+    U : width-averaged velocity from the longitudinal flow model [m s^-1]
+
+    Returns
+    -------
+    du : the difference between the width-averaged velocity from the flow model 
+    and the width-averaged velocity from the transverse velocity profile
+
+    '''
     
     _, _, u_mean = transverse(W,muS,muW,H,d,A,b)
     
@@ -253,13 +138,181 @@ def muW_minimize(muW, H, W, U):
     return(du)
 
 #%%
-# H = 50
-# U = 30
-# W = 5000
+def calc_mu(x,U,H,dx):
+    '''
+    Calculates mu for the 1D flow model. In the 1D model, longitudinal and 
+    transverse strain rates have been de-coupled. calc_mu only determines mu
+    for the longitudinal component, and is primarily used when iterating to 
+    solve the stress balance equation for U.
 
-# k=0
-# result = minimize(muW_minimize, muW_, (H,W,U),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
-# muW = result.x
+    Parameters
+    ----------
+    x : longitudinal position [m]
+    U : width-averaged velocity [m s^-1]
+    H : ice melange thickness [m]
+    dx : grid spacing [m]
 
-# y, u, u_mean = transverse(W,muS,muW,H,d,A,b)
-# plt.plot(y,u)
+    Returns
+    -------
+    nu : mu*H/gg, on the staggered grid
+    mu : effective coefficient of friction
+    ee : second invariant of the strain rate tensor (neglecting e_xy)
+    
+    '''
+    
+    # set up the staggered grid
+    xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
+    Hn = np.interp(xn, x, H) # thickness on the staggered grid
+    
+    dee = 1e-15 # finite strain rate to prevent infinite viscosity
+    
+    #ee = np.sqrt(0.5*(np.diff(U)/np.diff(x))**2) + dee # second invariant of the strain rate
+    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=2)**2) + dee # second invariant of the strain rate
+    
+    mu = 2*muS*np.ones(len(x)) # initial guess for mu
+    gg = ee/mu # initial guess for the granular fluidity
+    
+    k = 1
+    while k==1: 
+        
+        # Equation 18 in Amundson and Burton (2018)
+        g_loc = np.zeros(len(x))
+        g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
+        
+        # Essentially Equation 19 in Amundson and Burton (2018)
+        zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
+    
+        # construct equation Cx=T
+        # boundary conditions: 
+        #    g=0 at x=0, L (implies strain rate = 0)
+        #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
+        
+        c_left = np.ones(len(x)-1)
+        c_left[-1] = 0
+        
+        c = -(2+zeta*dx**2)
+        c[0] = -1
+        c[-1] = 1
+            
+        c_right = np.ones(len(x)-1) 
+        
+        diagonals = [c_left,c,c_right]
+        C = diags(diagonals,[-1,0,1]).toarray() 
+        
+        T = -g_loc*zeta*dx**2
+        T[0] = 0
+        T[-1] = 0
+            
+        gg_new = np.linalg.solve(C,T) # solve for granular fluidity
+        
+        dgg = gg_new - gg
+        
+        gg += + dgg/100
+        mu = ee/gg   
+        #plt.plot(x,gg)
+        
+        #gg = gg_new
+        #print(np.max(np.abs(gg-gg_new)))
+        #print(k)
+        if (np.abs(dgg) < 1e-10).any():        
+            xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1)
+            nu = np.interp(xn,x,H**2/gg) # create new variable on staggered grid to simplify later
+            
+            break
+        
+    return(nu, mu, ee)
+    
+    
+#%%
+def velocity(x,Ut,U,H,W,dx):
+    '''
+    Primary code for calculating the longitudinal velocity profiles with the
+    nonlocal granular fluidity rheology.
+
+    Parameters
+    ----------
+    x : longitudinal coordinate [m]
+    Ut : width-avergaed terminus velocity [m s^-1]
+    U : initial guess of the width-averaged velocity [m s^-1]
+    H : ice melange thickness [m]
+    W : fjord width [m]
+    dx : grid spacing [m]
+
+    Returns
+    -------
+    U : computed width-averaged velocity [m s^-1]
+    mu : effective coefficient of friction
+    muW : computed coefficient of friction along the fjord walls
+
+    '''
+    # U is the initial guess for the velocity
+    # plt.figure(figsize=(10,8))
+    # ax1 = plt.subplot(311)
+    # ax2 = plt.subplot(312)
+    # ax3 = plt.subplot(313)
+
+    muW = muW_*np.ones(x.shape)
+    
+    j = 1
+    while j==1:
+        
+        #print(U[-1]*secsDay)
+        nu, mu, ee = calc_mu(x,U,H,dx)
+        #nu, mu = granular_fluidity(x,U,H,dx)                   
+        
+        # calculate mu_w given the current velocity profile
+        
+        for k in range(len(muW)):
+            result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
+            #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', tol=1e-6)#, options={'disp': True})
+           
+            muW[k] = result.x
+    
+        
+        # constructing matrix Dx = T to solve for velocity        
+        T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+        T[0] = Ut # upstream boundary moves at terminus velocity
+        T = np.append(T,0)#(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
+                      
+        
+        A = nu[:-1]
+        B = -(nu[:-1]+nu[1:])
+        C = nu[1:]
+
+        # use a_left, a, and a_right define the diagonals of D
+        a_left = np.append(A, -1)
+        
+        a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
+        a[1:-1] = B
+        a[-1] = 1
+                                   
+        a_right = np.append(0,C)
+        
+          
+        # print('a: ' + str(len(a)))
+        # print('a_left: ' + str(len(a_left)))
+        # print('a_right: ' + str(len(a_right)))
+        
+        diagonals = [a_left,a,a_right]
+        D = diags(diagonals,[-1,0,1]).toarray() 
+         
+        U_new = np.linalg.solve(D,T) # solve for velocity
+        
+       
+        print('dU: ' + str(np.max(np.abs(U-U_new))*secsYear) + ' m/yr')
+        
+        if (np.abs(U-U_new)*secsYear > 1).any():        
+            dU = U_new - U
+            U = U + dU
+            #U = U_new
+        else:
+            U = U_new
+            break
+               
+    return(U, mu, muW)
+        
+
+
+
+
+

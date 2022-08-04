@@ -90,7 +90,7 @@ def calc_muW(muW, H, W, U):
     slip along the fjord walls.
 
     The minimimization is run during "velocity":
-        result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]*secsDay),  method='COBYLA', constraints=[muI_constraint], tol=1e-6)#, options={'disp': True})
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]*secsDay),  method='COBYLA', constraints=[muI_constraint], tol=1e-6)#, options={'disp': True})
         muW[k]  = result.x
 
     Parameters
@@ -118,14 +118,12 @@ def calc_muW(muW, H, W, U):
 
 
 #%% 
-# determine the coefficient of friction in the mu(I) rheology; only accounting for longitudinal strain rates
-
 def calc_mu(x,U,H,dx):
     '''
     Calculates mu for the 1D flow model. In the 1D model, longitudinal and 
     transverse strain rates have been de-coupled. calc_mu only determines mu
     for the longitudinal component, and is primarily used when iterating to 
-    the stress balance equation for U.
+    solve the stress balance equation for U.
 
     Parameters
     ----------
@@ -142,28 +140,69 @@ def calc_mu(x,U,H,dx):
     
     '''
     
-    dee = 1e-15 # finite strain rate to prevent infinite viscosity
-    # fix later (?); could modify equations so that dU/dx = 0 if ee=0.
-    ee = np.sqrt(np.gradient(U,dx)**2/2)+dee # second invariant of strain rate
-
-    I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*H))
-    mu = muS + I*(mu0-muS)/(I0+I)
-
-    # create staggered grid, using linear interpolation
+    # set up the staggered grid
     xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
+    Hn = np.interp(xn, x, H) # thickness on the staggered grid
+    
+    dee = 1e-15 # finite strain rate to prevent infinite viscosity
+    
+    # ee = np.sqrt(0.5*(np.diff(U)/np.diff(x))**2) + dee # second invariant of the strain rate
+    # I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*Hn)) 
+    # mu = muS + I*(mu0-muS)/(I0+I) 
+
+    # nu = mu*Hn**2/ee
+
+    # calculate mu on the original grid
+    ee = np.sqrt(np.gradient(U, dx, edge_order=2)**2/2)+dee # second invariant of strain rate
+    I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*H))
+    mu = muS + I*(mu0-muS)/(I0+I) 
+   
     nu = np.interp(xn,x,mu/ee*H**2) # create new variable on staggered grid to simplify later
 
     return(nu, mu, ee)
 
+#%%
+def get_mu(x,U,H,W,dx):
+    '''
+    After determining the velocity profile with fsolve, go back and retrieve
+    the effective coefficients of friction.
+
+    Parameters
+    ----------
+    x : longitudinal coordinate [m]
+    U : initial guess of the width-averaged velocity [m s^-1]
+    H : ice melange thickness [m]
+    W : fjord width [m]
+    dx : grid spacing [m]
+
+    Returns
+    -------
+    mu : effective coefficient of friction
+    muW : effective coefficient of friction along the fjord walls
+
+    '''
+    
+    # calculate mu given the current velocity profile
+    _, mu, _ = calc_mu(x,U,H,dx)
+    
+    # calculate mu_w given the current velocity profile
+    for k in range(len(muW)):
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
+        if result.x < muS:
+            muW[k] = muS
+        elif result.x >= mu0:
+            muW[k] = mu0-0.0001
+        else:
+            muW[k]  = result.x
+            
+    return(mu,mu_w)
     
 
-
-
 #%%
-def velocity(x,Ut,U,H,W,dx):
+def velocity(U,x,Ut,H,W,dx):
     '''
     Primary code for calculating the longitudinal velocity profiles with the
-    mu(I) rheology.
+    mu(I) rheology. Use this with fsolve.
 
     Parameters
     ----------
@@ -176,9 +215,8 @@ def velocity(x,Ut,U,H,W,dx):
 
     Returns
     -------
-    U : computed width-averaged velocity [m s^-1]
-    mu : effective coefficient of friction
-    muW : computed coefficient of friction along the fjord walls
+    dU : difference in width-averaged velocity from one fsolve iteration to 
+    the next [m s^-1]
 
     '''
         
@@ -189,63 +227,57 @@ def velocity(x,Ut,U,H,W,dx):
 
     muW = muW_*np.ones(x.shape) # construct initial array for muW
     
-    j = 1
-    while j==1:
-        
-        #print(U[-1]*secsDay)
-        nu, mu, ee = calc_mu(x,U,H,dx)
-        
-        
-        # calculate mu_w given the current velocity profile
-        for k in range(len(muW)):
-            #result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[muI_constraint], tol=1e-10)#, options={'disp': True})
-            result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
-            #result = fsolve(calc_muW, muW_, (H[k],W[k],U[k]), xtol=1e-6)#, options={'disp': True})
-            if result.x < muS:
-                muW[k] = muS
-            elif result.x >= mu0:
-                muW[k] = mu0-0.0001
-            else:
-                muW[k]  = result.x
-            
-                    
-        # ax1.plot(x,muW)
-        # ax1.set_ylim([muS-0.1, mu0+0.1])
-        # ax1.set_ylabel('$\mu_W$')
-        # ax2.plot(x,mu)
-        # ax2.set_ylim([muS-0.1, mu0+0.1])
-        # ax2.set_ylabel('$\mu$')
-        # ax3.plot(x,U*secsDay)
-        # ax3.set_ylim([-5, 50])
-        # ax3.set_ylabel('$U$ [m d$^{-1}$]')
-        # ax3.set_xlabel('Longitudinal coordinate [m]')
-      
-                
-        # constructing matrix Dx = T to solve for velocity        
-        T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
-        T[0] = Ut # upstream boundary moves at terminus velocity
-        T = np.append(T,0)#(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
-
-        # use a_left, a, and a_right define the diagonals of D
-        a_left = np.append(nu[:-1], -1)
-        
-        a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
-        a[1:-1] = -(nu[:-1]+nu[1:])
-        a[-1] = 1
-                                   
-        a_right = np.append(0,nu[1:])
-        
-        diagonals = [a_left,a,a_right]
-        D = diags(diagonals,[-1,0,1]).toarray() 
-         
-        U_new = np.linalg.solve(D,T) # solve for velocity
-               
-        if (np.abs(U-U_new)*secsYear > 1).any():        
-            dU = U-U_new
-            U = U - dU
-            #print(np.max(np.abs(dU))*secsDay)
+   
+    nu, mu, ee = calc_mu(x,U,H,dx)
+    
+    
+    # calculate mu_w given the current velocity profile
+    for k in range(len(muW)):
+        #result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[muI_constraint], tol=1e-10)#, options={'disp': True})
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
+        #result = fsolve(calc_muW, muW_, (H[k],W[k],U[k]), xtol=1e-6)#, options={'disp': True})
+        if result.x < muS:
+            muW[k] = muS
+        elif result.x >= mu0:
+            muW[k] = mu0-0.0001
         else:
-            U = U_new
-            break
-               
-    return(U, mu, muW)
+            muW[k]  = result.x
+        
+                
+    # ax1.plot(x,muW)
+    # ax1.set_ylim([muS-0.1, mu0+0.1])
+    # ax1.set_ylabel('$\mu_W$')
+    # ax2.plot(x,mu)
+    # ax2.set_ylim([muS-0.1, mu0+0.1])
+    # ax2.set_ylabel('$\mu$')
+    # ax3.plot(x,U*secsDay)
+    # ax3.set_ylim([-5, 50])
+    # ax3.set_ylabel('$U$ [m d$^{-1}$]')
+    # ax3.set_xlabel('Longitudinal coordinate [m]')
+  
+            
+    # constructing matrix Dx = T to solve for velocity        
+    T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+    T[0] = Ut # upstream boundary moves at terminus velocity
+    #T = np.append(T,0) # use this to force strain rate to be 0 at x=L
+    T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
+
+    # use a_left, a, and a_right define the diagonals of D
+    a_left = np.append(nu[:-1], -1)
+    
+    a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
+    a[1:-1] = -(nu[:-1]+nu[1:])
+    a[-1] = 1
+                               
+    a_right = np.append(0,nu[1:])
+    
+    diagonals = [a_left,a,a_right]
+    D = diags(diagonals,[-1,0,1]).toarray() 
+     
+    U_new = np.linalg.solve(D,T) # solve for new velocity
+    
+    dU = U-U_new
+    
+    print('     max(|U-U_new|): ' + "{:.2f}".format(np.max(np.abs(dU))*secsYear) + ' m a^-1')
+    
+    return(dU)     
