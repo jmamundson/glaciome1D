@@ -36,8 +36,8 @@ dt = secsDay*10 # time step [s]
 B = 0/secsYear # mass balance rate [m s^-1]
 
 x0 = 0 # left boundary of the melange [m]
-L = 10e3+x0 # initial ice melange length [m]
-dx = 500 # grid spacing [m]
+L = 5e3+x0 # initial ice melange length [m]
+dx = 1000 # grid spacing [m]
 x = np.arange(x0,L+dx,dx) # longitudinal grid
 W = 3000*np.ones(x.shape) # fjord width [m]; treated as constant for now
 
@@ -86,10 +86,10 @@ for k in np.arange(0,n):
     
     U = fsolve(model.velocity, U, (x,Ut,H,W,dx), xtol=0.1/secsYear)
     
-    mu, muW = model.get_mu(x,U,H,W,dx)
+    #mu, muW = model.get_mu(x,U,H,W,dx)
     
     
-    np.savez('./results/time_' + "{:03d}".format(int(k*dt/secsDay)) + '.npz'  , x=x, H=H, U=U, W=W, mu=mu, muW = muW)
+    np.savez('./results/time_' + "{:03d}".format(int(k*dt/secsDay)) + '.npz'  , x=x, H=H, U=U, W=W)#, mu=mu, muW=muW)
     
     
     # UPDATE THE ICE MELANGE THICKNESS USING MASS CONTINUITY

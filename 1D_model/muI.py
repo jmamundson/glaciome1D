@@ -185,6 +185,8 @@ def get_mu(x,U,H,W,dx):
     # calculate mu given the current velocity profile
     _, mu, _ = calc_mu(x,U,H,dx)
     
+    muW = muW_*np.ones(x.shape)
+    
     # calculate mu_w given the current velocity profile
     for k in range(len(muW)):
         result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
@@ -195,7 +197,7 @@ def get_mu(x,U,H,W,dx):
         else:
             muW[k]  = result.x
             
-    return(mu,mu_w)
+    return(mu,muW)
     
 
 #%%
