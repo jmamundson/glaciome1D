@@ -113,7 +113,8 @@ def calc_muW(muW, H, W, U):
     if U<0:
         u_mean = -u_mean
         
-    du = np.abs(U-u_mean)    
+    du = np.abs(U-u_mean)  
+    
     return(du)
 
 
@@ -153,7 +154,7 @@ def calc_mu(x,U,H,dx):
     # nu = mu*Hn**2/ee
 
     # calculate mu on the original grid
-    ee = np.sqrt(np.gradient(U, dx, edge_order=2)**2/2)+dee # second invariant of strain rate
+    ee = np.sqrt(np.gradient(U, dx, edge_order=1)**2/2)+dee # second invariant of strain rate
     I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*H))
     mu = muS + I*(mu0-muS)/(I0+I) 
    
@@ -222,47 +223,38 @@ def velocity(U,x,Ut,H,W,dx):
 
     '''
         
-    # plt.figure(figsize=(10,8))
-    # ax1 = plt.subplot(311)
-    # ax2 = plt.subplot(312)
-    # ax3 = plt.subplot(313)
-
     muW = muW_*np.ones(x.shape) # construct initial array for muW
-    
-   
+  
     nu, mu, ee = calc_mu(x,U,H,dx)
-    
     
     # calculate mu_w given the current velocity profile
     for k in range(len(muW)):
-        #result = minimize(muW_minimize, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[muI_constraint], tol=1e-10)#, options={'disp': True})
-        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
-        #result = fsolve(calc_muW, muW_, (H[k],W[k],U[k]), xtol=1e-6)#, options={'disp': True})
-        if result.x < muS:
+        #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
+        # if result.x < muS:
+        #     muW[k] = muS
+        # elif result.x >= mu0:
+        #     muW[k] = mu0-0.0001
+        # else:
+        #     muW[k]  = result.x
+        
+        
+        result = fsolve(calc_muW, muW_, (H[k],W[k],U[k]), xtol=1e-12)#, options={'disp': True})
+        if result < muS:
             muW[k] = muS
-        elif result.x >= mu0:
+        elif result >= mu0:
             muW[k] = mu0-0.0001
         else:
-            muW[k]  = result.x
+            muW[k]  = result
         
-                
-    # ax1.plot(x,muW)
-    # ax1.set_ylim([muS-0.1, mu0+0.1])
-    # ax1.set_ylabel('$\mu_W$')
-    # ax2.plot(x,mu)
-    # ax2.set_ylim([muS-0.1, mu0+0.1])
-    # ax2.set_ylabel('$\mu$')
-    # ax3.plot(x,U*secsDay)
-    # ax3.set_ylim([-5, 50])
-    # ax3.set_ylabel('$U$ [m d$^{-1}$]')
-    # ax3.set_xlabel('Longitudinal coordinate [m]')
-  
             
     # constructing matrix Dx = T to solve for velocity        
     T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
     T[0] = Ut # upstream boundary moves at terminus velocity
     #T = np.append(T,0) # use this to force strain rate to be 0 at x=L
-    T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
+    #T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
+    T = np.append(T,-I0*np.sqrt(pressure(H[-1])/rho)*(muS-(1-d/H[-1]))/(mu0-(1-d/H[-1])))
+    
+
 
     # use a_left, a, and a_right define the diagonals of D
     a_left = np.append(nu[:-1], -1)

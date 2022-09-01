@@ -135,6 +135,7 @@ def calc_muW(muW, H, W, U):
         u_mean = -u_mean
         
     du = np.abs(U-u_mean)    
+    
     return(du)
 
 #%%
@@ -167,7 +168,9 @@ def calc_mu(x,U,H,dx):
     dee = 1e-15 # finite strain rate to prevent infinite viscosity
     
     #ee = np.sqrt(0.5*(np.diff(U)/np.diff(x))**2) + dee # second invariant of the strain rate
-    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=2)**2) + dee # second invariant of the strain rate
+  
+    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=1)**2) + dee # second invariant of the strain rate
+    
     
     mu = 2*muS*np.ones(len(x)) # initial guess for mu
     gg = ee/mu # initial guess for the granular fluidity
@@ -222,9 +225,42 @@ def calc_mu(x,U,H,dx):
         
     return(nu, mu, ee)
     
+
+#%%
+def get_mu(x,U,H,W,dx):
+    '''
+    After determining the velocity profile with fsolve, go back and retrieve
+    the effective coefficients of friction.
+
+    Parameters
+    ----------
+    x : longitudinal coordinate [m]
+    U : initial guess of the width-averaged velocity [m s^-1]
+    H : ice melange thickness [m]
+    W : fjord width [m]
+    dx : grid spacing [m]
+
+    Returns
+    -------
+    mu : effective coefficient of friction
+    muW : effective coefficient of friction along the fjord walls
+
+    '''
+    
+    # calculate mu given the current velocity profile
+    _, mu, _ = calc_mu(x,U,H,dx)
+    
+    muW = muW_*np.ones(x.shape)
+    
+    # calculate mu_w given the current velocity profile
+    for k in range(len(muW)):
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
+        muW[k]  = result.x
+            
+    return(mu,muW)
     
 #%%
-def velocity(x,Ut,U,H,W,dx):
+def velocity(U,x,Ut,H,W,dx):
     '''
     Primary code for calculating the longitudinal velocity profiles with the
     nonlocal granular fluidity rheology.
@@ -240,9 +276,8 @@ def velocity(x,Ut,U,H,W,dx):
 
     Returns
     -------
-    U : computed width-averaged velocity [m s^-1]
-    mu : effective coefficient of friction
-    muW : computed coefficient of friction along the fjord walls
+    dU : difference in width-averaged velocity from one fsolve iteration to 
+    the next [m s^-1]
 
     '''
     # U is the initial guess for the velocity
@@ -253,63 +288,45 @@ def velocity(x,Ut,U,H,W,dx):
 
     muW = muW_*np.ones(x.shape)
     
-    j = 1
-    while j==1:
-        
-        #print(U[-1]*secsDay)
-        nu, mu, ee = calc_mu(x,U,H,dx)
-        #nu, mu = granular_fluidity(x,U,H,dx)                   
-        
-        # calculate mu_w given the current velocity profile
-        
-        for k in range(len(muW)):
-            result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
-            #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', tol=1e-6)#, options={'disp': True})
-           
-            muW[k] = result.x
+    nu, mu, ee = calc_mu(x,U,H,dx)
     
         
-        # constructing matrix Dx = T to solve for velocity        
-        T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
-        T[0] = Ut # upstream boundary moves at terminus velocity
-        T = np.append(T,0)#(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
-                      
+    # calculate mu_w given the current velocity profile
+    for k in range(len(muW)):
         
-        A = nu[:-1]
-        B = -(nu[:-1]+nu[1:])
-        C = nu[1:]
+        #muW[k] = fsolve(calc_muW, muW, (H[k],W[k],U[k]), xtol=0.1/secsYear)
+        
+        result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
+        muW[k] = result.x
+    
+    # constructing matrix Dx = T to solve for velocity        
+    T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+    T[0] = Ut # upstream boundary moves at terminus velocity
+    T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition             
+    
+    A = nu[:-1]
+    B = -(nu[:-1]+nu[1:])
+    C = nu[1:]
 
-        # use a_left, a, and a_right define the diagonals of D
-        a_left = np.append(A, -1)
+    # use a_left, a, and a_right define the diagonals of D
+    a_left = np.append(A, -1)
+    
+    a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
+    a[1:-1] = B
+    a[-1] = 1
+                               
+    a_right = np.append(0,C)
         
-        a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
-        a[1:-1] = B
-        a[-1] = 1
-                                   
-        a_right = np.append(0,C)
-        
-          
-        # print('a: ' + str(len(a)))
-        # print('a_left: ' + str(len(a_left)))
-        # print('a_right: ' + str(len(a_right)))
-        
-        diagonals = [a_left,a,a_right]
-        D = diags(diagonals,[-1,0,1]).toarray() 
-         
-        U_new = np.linalg.solve(D,T) # solve for velocity
-        
-       
-        print('dU: ' + str(np.max(np.abs(U-U_new))*secsYear) + ' m/yr')
-        
-        if (np.abs(U-U_new)*secsYear > 1).any():        
-            dU = U_new - U
-            U = U + dU
-            #U = U_new
-        else:
-            U = U_new
-            break
-               
-    return(U, mu, muW)
+    diagonals = [a_left,a,a_right]
+    D = diags(diagonals,[-1,0,1]).toarray() 
+     
+    U_new = np.linalg.solve(D,T) # solve for velocity
+    
+    dU = U-U_new
+
+    print('     max(|U-U_new|): ' + "{:.2f}".format(np.max(np.abs(dU))*secsYear) + ' m a^-1')  
+           
+    return(dU)
         
 
 

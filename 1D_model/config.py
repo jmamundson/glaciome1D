@@ -24,18 +24,18 @@ secsYear = secsDay*daysYear
 d = 25 # characteristic iceberg size [m]
 
 # parameters for muI rheology
-mu0 = 0.4 # maximum coefficient of friction
-muS = 0.2 # minimum coefficient of friction
-muW_ = muS # initial guess for coefficient of friction along the fjord walls
+mu0 = 0.5 # maximum coefficient of friction
+muS = 0.3 # minimum coefficient of friction
+muW_ = (muS+mu0)/2 # initial guess for coefficient of friction along the fjord walls
 muI_constraint = LinearConstraint([1], muS, mu0*0.9999) # muS <= muW < mu0
 I0 = 10**-6
 
 
 # parameters for granular fluidity rheology
 #muS = 0.2
-A = 0.00001
-b = 2e4 
-nonlocal_constraint = LinearConstraint([1], muS, mu0)
+A = 1
+b = 2e8 
+nonlocal_constraint = LinearConstraint([1], muS, 10*mu0)
 
     # constants --> Needs some thought!
     #b = (mu0-muS)/I0

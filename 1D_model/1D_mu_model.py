@@ -12,7 +12,7 @@ from config import *
 import importlib
 
 # here you should specify the rheology that should be imported
-#rheology = 'granular_fluidity2'
+#rheology = 'granular_fluidity'
 rheology = 'muI'
 
 model = importlib.import_module(rheology)
@@ -31,18 +31,18 @@ Created on Fri Feb 11 11:27:08 2022
 
 #%%
 
-dt = secsDay*10 # time step [s]
+dt = secsDay*1 # time step [s]
 
 B = 0/secsYear # mass balance rate [m s^-1]
 
 x0 = 0 # left boundary of the melange [m]
 L = 5e3+x0 # initial ice melange length [m]
-dx = 1000 # grid spacing [m]
+dx = 100 # grid spacing [m]
 x = np.arange(x0,L+dx,dx) # longitudinal grid
-W = 3000*np.ones(x.shape) # fjord width [m]; treated as constant for now
+W = 5000*np.ones(x.shape) # fjord width [m]; treated as constant for now
 
 H = np.ones(x.shape)*d # initial ice melange thickness [m]
-#H = 25*(1-x/L)+25
+#H = d*(1-x/L)+d # initial ice melange thickness [m]
 
 Ut = 10000/secsYear # width-averaged glacier terminus velocity [m s^-1]
 U = Ut*(1-x/L) # initial guess for the width-averaged velocity [m s^-1]
@@ -54,28 +54,28 @@ muW = np.zeros(len(x))
 #U[0] = Ut
 
 #%%
-# plt.figure(figsize=(12,8))
-# ax1 = plt.subplot(221)
-# ax1.set_xlabel('Longitudinal coordinate [m]')
-# ax1.set_ylabel('Speed [m/yr]')
-# ax1.set_ylim([0,10000])
+plt.figure(figsize=(12,8))
+ax1 = plt.subplot(221)
+ax1.set_xlabel('Longitudinal coordinate [m]')
+ax1.set_ylabel('Speed [m/yr]')
+ax1.set_ylim([0,10000])
 
-# ax2 = plt.subplot(222)
-# ax2.set_xlabel('Longitudinal coordinate [m]')
-# ax2.set_ylabel('Thickness [m]')
-# ax2.set_ylim([0, 100])
+ax2 = plt.subplot(222)
+ax2.set_xlabel('Longitudinal coordinate [m]')
+ax2.set_ylabel('Thickness [m]')
+ax2.set_ylim([0, 100])
 
-# ax3 = plt.subplot(223)
-# ax3.set_xlabel('Longitudinal coordinate [m]')
-# ax3.set_ylabel('$\mu$')
-# ax3.set_ylim([0.1, 0.7])
+ax3 = plt.subplot(223)
+ax3.set_xlabel('Longitudinal coordinate [m]')
+ax3.set_ylabel('$\mu$')
+ax3.set_ylim([0.1, 0.7])
 
-# ax4 = plt.subplot(224)
-# ax4.set_xlabel('Longitudinal coordinate [m]')
-# ax4.set_ylabel('$\mu_w$')
-# ax4.set_ylim([0.1, 0.7])
+ax4 = plt.subplot(224)
+ax4.set_xlabel('Longitudinal coordinate [m]')
+ax4.set_ylabel('$\mu_w$')
+ax4.set_ylim([0.1, 0.7])
 
-n = 11 # number of time steps
+n = 51 # number of time steps
 color_id = np.linspace(0,1,n) 
 
 
@@ -83,13 +83,12 @@ for k in np.arange(0,n):
     print('Time: ' + "{:.0f}".format(k*dt/secsDay) + ' days')     
     #U, mu, muW = model.velocity(U,x,Ut,H,W,dx)
              
-    
     U = fsolve(model.velocity, U, (x,Ut,H,W,dx), xtol=0.1/secsYear)
     
-    #mu, muW = model.get_mu(x,U,H,W,dx)
+    mu, muW = model.get_mu(x,U,H,W,dx)
     
     
-    np.savez('./results/time_' + "{:03d}".format(int(k*dt/secsDay)) + '.npz'  , x=x, H=H, U=U, W=W)#, mu=mu, muW=muW)
+    #np.savez('./results/time_' + "{:03d}".format(int(k*dt/secsDay)) + '.npz'  , x=x, H=H, U=U, W=W)#, mu=mu, muW=muW)
     
     
     # UPDATE THE ICE MELANGE THICKNESS USING MASS CONTINUITY
@@ -97,7 +96,7 @@ for k in np.arange(0,n):
     # second order accurate at the boundaries (using
     # ghost points?)
     # 2) update the thickness using an explicit time step
-    dHdt = (B-np.gradient(H*W*U, x, edge_order=2)/W) # rate of thickness change
+    dHdt = (B-np.gradient(H*W*U, x, edge_order=1)/W) # rate of thickness change
     H += dHdt*dt # new thickness
         
     # UPDATE THE GRID
@@ -122,10 +121,10 @@ for k in np.arange(0,n):
     x = xg
     
 
-#     if k % 1 == 0:
-#         ax1.plot(x,U*secsYear,color=plt.cm.viridis(color_id[k]))
-#         ax2.plot(x,H,color=plt.cm.viridis(color_id[k]))
-#         ax3.plot(x,mu,color=plt.cm.viridis(color_id[k]))
-#         ax4.plot(x,muW,color=plt.cm.viridis(color_id[k]))
-# plt.tight_layout()
+    if k % 1 == 0:
+        ax1.plot(x,U*secsYear,color=plt.cm.viridis(color_id[k]))
+        ax2.plot(x,H,color=plt.cm.viridis(color_id[k]))
+        ax3.plot(x,mu,color=plt.cm.viridis(color_id[k]))
+        ax4.plot(x,muW,color=plt.cm.viridis(color_id[k]))
+plt.tight_layout()
 
