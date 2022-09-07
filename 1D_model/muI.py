@@ -5,6 +5,7 @@ from scipy import sparse
 from scipy.optimize import fsolve
 from scipy.sparse import diags
 from scipy.optimize import minimize
+from scipy.optimize import root
 
 from config import *
 
@@ -158,8 +159,12 @@ def calc_mu(x,U,H,dx):
     I = ee*d/np.sqrt((0.5*g*(1-rho/rho_w)*H))
     mu = muS + I*(mu0-muS)/(I0+I) 
    
-    nu = np.interp(xn,x,mu/ee*H**2) # create new variable on staggered grid to simplify later
-
+    nu = np.interp(xn,x,(mu-muS)/ee*H) # create new variable on staggered grid to simplify later
+    
+    Hn = np.interp(xn,x,H)
+    
+    nu = nu*Hn
+    
     return(nu, mu, ee)
 
 #%%
@@ -227,6 +232,7 @@ def velocity(U,x,Ut,H,W,dx):
   
     nu, mu, ee = calc_mu(x,U,H,dx)
     
+    ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
     for k in range(len(muW)):
         #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='Nelder-Mead', tol=1e-10)#, options={'disp': True})
@@ -238,7 +244,9 @@ def velocity(U,x,Ut,H,W,dx):
         #     muW[k]  = result.x
         
         
-        result = fsolve(calc_muW, muW_, (H[k],W[k],U[k]), xtol=1e-12)#, options={'disp': True})
+        result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})#xtol=1e-12)#, options={'disp': True})
+        result = result.x
+        
         if result < muS:
             muW[k] = muS
         elif result >= mu0:
@@ -248,13 +256,12 @@ def velocity(U,x,Ut,H,W,dx):
         
             
     # constructing matrix Dx = T to solve for velocity        
-    T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+    T = ((2*H[:-1]-d*(1-muS*np.sqrt(2)))*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
     T[0] = Ut # upstream boundary moves at terminus velocity
     #T = np.append(T,0) # use this to force strain rate to be 0 at x=L
     #T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition
-    T = np.append(T,-I0*np.sqrt(pressure(H[-1])/rho)*(muS-(1-d/H[-1]))/(mu0-(1-d/H[-1])))
+    T = np.append(T,-I0*np.sqrt(pressure(H[-1])/rho)*(muS*np.sqrt(2)-(1-d*(1-muS*np.sqrt(2))/H[-1]))/(mu0*np.sqrt(2)-(1-d*(1-muS*np.sqrt(2))/H[-1])))
     
-
 
     # use a_left, a, and a_right define the diagonals of D
     a_left = np.append(nu[:-1], -1)
@@ -272,6 +279,6 @@ def velocity(U,x,Ut,H,W,dx):
     
     dU = U-U_new
     
-    print('     max(|U-U_new|): ' + "{:.2f}".format(np.max(np.abs(dU))*secsYear) + ' m a^-1')
+    #print('     max(|U-U_new|): ' + "{:.2f}".format(np.max(np.abs(dU))*secsYear) + ' m a^-1')
     
     return(dU)     

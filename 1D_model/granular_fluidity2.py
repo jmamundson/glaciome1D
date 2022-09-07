@@ -141,7 +141,7 @@ def calc_muW(muW, H, W, U):
     return(du)
 
 #%%
-def calc_mu(x,U,H,dx):
+def calc_g(gg0,x,H,mu,dx):
     '''
     Calculates mu for the 1D flow model. In the 1D model, longitudinal and 
     transverse strain rates have been de-coupled. calc_mu only determines mu
@@ -164,68 +164,68 @@ def calc_mu(x,U,H,dx):
     '''
     
     # set up the staggered grid
-    xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
-    Hn = np.interp(xn, x, H) # thickness on the staggered grid
+    # xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
+    # Hn = np.interp(xn, x, H) # thickness on the staggered grid
     
-    dee = 1e-15 # finite strain rate to prevent infinite viscosity
+    #dee = 1e-15 # finite strain rate to prevent infinite viscosity
     
     #ee = np.sqrt(0.5*(np.diff(U)/np.diff(x))**2) + dee # second invariant of the strain rate
   
-    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=1)**2) + dee # second invariant of the strain rate
+    #ee = np.sqrt(0.5*np.gradient(U, x, edge_order=1)**2) + dee # second invariant of the strain rate
     
     
-    mu = 2*muS*np.ones(len(x)) # initial guess for mu
-    gg = ee/mu # initial guess for the granular fluidity
+    #mu = 2*muS*np.ones(len(x)) # initial guess for mu
+    #gg = ee/mu # initial guess for the granular fluidity
     
-    k = 1
-    while k==1: 
         
-        # Equation 18 in Amundson and Burton (2018)
-        g_loc = np.zeros(len(x))
-        g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
-        
-        # Essentially Equation 19 in Amundson and Burton (2018)
-        zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
+    # Equation 18 in Amundson and Burton (2018)
+    g_loc = np.zeros(len(x))
+    g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
     
-        # construct equation Cx=T
-        # boundary conditions: 
-        #    g=0 at x=0, L (implies strain rate = 0)
-        #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
+    # Essentially Equation 19 in Amundson and Burton (2018)
+    zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
+
+    # construct equation Cx=T
+    # boundary conditions: 
+    #    g=0 at x=0, L (implies strain rate = 0)
+    #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
+    
+    c_left = np.ones(len(x)-1)
+    c_left[-1] = 0
+    
+    c = -(2+zeta*dx**2)
+    c[0] = -1
+    c[-1] = 1
         
-        c_left = np.ones(len(x)-1)
-        c_left[-1] = 0
+    c_right = np.ones(len(x)-1) 
+    
+    diagonals = [c_left,c,c_right]
+    C = diags(diagonals,[-1,0,1]).toarray() 
+    
+    T = -g_loc*zeta*dx**2
+    T[0] = 0
+    T[-1] = 0
         
-        c = -(2+zeta*dx**2)
-        c[0] = -1
-        c[-1] = 1
+    gg_new = np.linalg.solve(C,T) # solve for granular fluidity
+    
+    dgg = gg_new - gg0
+        
+    return(dgg)
+    
+        # gg += + dgg/100
+        # mu = ee/gg   
+        # #plt.plot(x,gg)
+        
+        # #gg = gg_new
+        # #print(np.max(np.abs(gg-gg_new)))
+        # #print(k)
+    #     if (np.abs(dgg) < 1e-10).any():        
+    #         xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1)
+    #         nu = np.interp(xn,x,H/gg)*np.interp(xn,x,H) # create new variable on staggered grid to simplify later
             
-        c_right = np.ones(len(x)-1) 
+    #         break
         
-        diagonals = [c_left,c,c_right]
-        C = diags(diagonals,[-1,0,1]).toarray() 
-        
-        T = -g_loc*zeta*dx**2
-        T[0] = 0
-        T[-1] = 0
-            
-        gg_new = np.linalg.solve(C,T) # solve for granular fluidity
-        
-        dgg = gg_new - gg
-        
-        gg += + dgg/100
-        mu = ee/gg   
-        #plt.plot(x,gg)
-        
-        #gg = gg_new
-        #print(np.max(np.abs(gg-gg_new)))
-        #print(k)
-        if (np.abs(dgg) < 1e-10).any():        
-            xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1)
-            nu = np.interp(xn,x,H/gg)*np.interp(xn,x,H) # create new variable on staggered grid to simplify later
-            
-            break
-        
-    return(nu, mu, ee)
+    # return(nu, mu, ee)
     
 
 #%%
@@ -283,29 +283,42 @@ def velocity(U,x,Ut,H,W,dx):
     the next [m s^-1]
 
     '''
-    # U is the initial guess for the velocity
-    # plt.figure(figsize=(10,8))
-    # ax1 = plt.subplot(311)
-    # ax2 = plt.subplot(312)
-    # ax3 = plt.subplot(313)
 
-    muW = muW_*np.ones(x.shape)
-    
-    nu, mu, ee = calc_mu(x,U,H,dx)
-    
-        
-    # calculate mu_w given the current velocity profile
+    # 1. Calculate coefficient of friction along the fjord walls
+    muW = muW_*np.ones(x.shape) # initial guess for muW
+    # calculate muW given the current velocity profile
     for k in range(len(muW)):
-        
         #muW[k] = fsolve(calc_muW, muW, (H[k],W[k],U[k]), xtol=0.1/secsYear)
         result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})
         #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
         muW[k] = result.x
+    plt.plot(x,muW)
     
-    # constructing matrix Dx = T to solve for velocity        
+    # 2. Calculate the granular fluidity
+    dee = 1e-15 # finite strain rate to prevent infinite viscosity
+    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=1)**2) + dee # second invariant of the strain rate
+    mu = muS*np.ones(len(x))*2 # initial guess for mu
+    gg0 = ee/mu # initial guess for g    
+    result = root(calc_g,gg0,args=(x, H, mu, dx), method='lm', options={'xtol':1e-6})
+    gg = result.x
+    
+    # 3. Calculate nu on the staggered grid
+    xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
+    Hn = np.interp(xn, x, H)
+    
+    #nu = np.interp(xn,x,H/gg)*Hn # create new variable on staggered grid to simplify later
+    
+    mu = ee/gg       
+    nu = np.interp(xn,x,(mu-muS)*H/ee)*Hn
+    
+    
+    #nu, mu, ee = calc_mu(x,U,H,dx)
+    
+    
+    # 4. Construct matrix equation Dx = T to solve for velocity        
     T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
     T[0] = Ut # upstream boundary moves at terminus velocity
-    T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition             
+    T = np.append(T,0)#(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition             
     
     A = nu[:-1]
     B = -(nu[:-1]+nu[1:])
