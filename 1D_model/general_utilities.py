@@ -31,6 +31,14 @@ def thickness(W,L,H_L,mu0):
     
     return(x,H)
 
+
+#%% calculate second invariant of the strain rate with respect to chi (stretched grid)
+def second_invariant(U,dx):
+    ee_chi = np.sqrt((np.diff(U)/dx)**2)+dee
+    
+    return(ee_chi)
+
+
 #%% calculate the effective pressure driving flow
 
 # W = ice melange width

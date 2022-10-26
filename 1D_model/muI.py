@@ -244,7 +244,7 @@ def velocity(U,x,Ut,H,W,dx):
         #     muW[k]  = result.x
         
         
-        result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})#xtol=1e-12)#, options={'disp': True})
+        result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-12})#xtol=1e-12)#, options={'disp': True})
         result = result.x
         
         if result < muS:
@@ -256,7 +256,8 @@ def velocity(U,x,Ut,H,W,dx):
         
             
     # constructing matrix Dx = T to solve for velocity        
-    T = ((2*H[:-1]-d*(1-muS*np.sqrt(2)))*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+    #T = ((2*H[:-1]-d*(1-muS*np.sqrt(2)))*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
+    T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
     T[0] = Ut # upstream boundary moves at terminus velocity
     #T = np.append(T,0) # use this to force strain rate to be 0 at x=L
     #T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition

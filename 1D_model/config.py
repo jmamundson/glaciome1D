@@ -20,6 +20,8 @@ secsDay = 86400.
 daysYear = 365.25
 secsYear = secsDay*daysYear
 
+dee = 1e-16      # finite strain rate parameter
+dhh = 1e-16      # finite thickness gradient parameter 
 
 d = 25 # characteristic iceberg size [m]
 

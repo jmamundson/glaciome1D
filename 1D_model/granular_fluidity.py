@@ -327,8 +327,7 @@ def velocity(U,x,Ut,H,W,dx):
     
     dU = U-U_new
 
-    print('     max(|U-U_new|): ' + "{:.2f}".format(np.max(np.abs(dU))*secsYear) + ' m a^-1')  
-           
+              
     return(dU)
         
 
