@@ -258,7 +258,7 @@ def get_mu(x,U,H,W,dx):
     for k in range(len(muW)):
         result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})
         #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
-        muW[k]  = result.x
+        muW[k]  = result.xf
             
     return(mu,muW)
     

@@ -1,4 +1,6 @@
-# nonlocal.py contains tools for using the granular fluidity rheology
+# muI.py contains tools for using the mu(I) rheology
+# many of these functions can probably be used in the granular fluidity
+# if so, move them into general utilities
 
 import numpy as np
 from scipy import sparse
@@ -7,10 +9,10 @@ from scipy.sparse import diags
 from scipy.optimize import minimize
 from scipy.optimize import root
 
-
 from config import *
 
 from general_utilities import pressure
+from general_utilities import second_invariant
 
 from matplotlib import pyplot as plt
 
@@ -140,8 +142,9 @@ def calc_muW(muW, H, W, U):
     
     return(du)
 
+
 #%%
-def calc_mu(x,U,H,dx):
+def calc_gg(gg,ee_chi,H,L,dx):
     '''
     Calculates mu for the 1D flow model. In the 1D model, longitudinal and 
     transverse strain rates have been de-coupled. calc_mu only determines mu
@@ -150,86 +153,59 @@ def calc_mu(x,U,H,dx):
 
     Parameters
     ----------
-    x : longitudinal position [m]
-    U : width-averaged velocity [m s^-1]
     H : ice melange thickness [m]
-    dx : grid spacing [m]
+    L : ice melange length [m]
+    ee_chi : second invariant of the strain rate on the stretched grid
 
     Returns
     -------
-    nu : mu*H/gg, on the staggered grid
     mu : effective coefficient of friction
-    ee : second invariant of the strain rate tensor (neglecting e_xy)
     
     '''
+              
+    mu = (ee_chi/L)/gg
     
-    # set up the staggered grid
-    xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1 )
-    Hn = np.interp(xn, x, H) # thickness on the staggered grid
-    
-    dee = 1e-15 # finite strain rate to prevent infinite viscosity
-    
-    #ee = np.sqrt(0.5*(np.diff(U)/np.diff(x))**2) + dee # second invariant of the strain rate
-  
-    ee = np.sqrt(0.5*np.gradient(U, x, edge_order=1)**2) + dee # second invariant of the strain rate
-    
-    
-    mu = 2*muS*np.ones(len(x)) # initial guess for mu
-    gg = ee/mu # initial guess for the granular fluidity
-    
-    k = 1
-    while k==1: 
-        
-        # Equation 18 in Amundson and Burton (2018)
-        g_loc = np.zeros(len(x))
-        g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
-        
-        # Essentially Equation 19 in Amundson and Burton (2018)
-        zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
-    
-        # construct equation Cx=T
-        # boundary conditions: 
-        #    g=0 at x=0, L (implies strain rate = 0)
-        #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
-        
-        c_left = np.ones(len(x)-1)
-        c_left[-1] = 0
-        
-        c = -(2+zeta*dx**2)
-        c[0] = -1
-        c[-1] = 1
             
-        c_right = np.ones(len(x)-1) 
-        
-        diagonals = [c_left,c,c_right]
-        C = diags(diagonals,[-1,0,1]).toarray() 
-        
-        T = -g_loc*zeta*dx**2
-        T[0] = 0
-        T[-1] = 0
-            
-        gg_new = np.linalg.solve(C,T) # solve for granular fluidity
-        
-        dgg = gg_new - gg
-        
-        gg += + dgg/100
-        mu = ee/gg   
-        #plt.plot(x,gg)
-        
-        #gg = gg_new
-        #print(np.max(np.abs(gg-gg_new)))
-        #print(k)
-        if (np.abs(dgg) < 1e-10).any():        
-            xn = np.linspace(x[0]+dx/2, x[-1]+dx/2, len(x)-1)
-            nu = np.interp(xn,x,H/gg)*np.interp(xn,x,H) # create new variable on staggered grid to simplify later
-            
-            break
-        
-    return(nu, mu, ee)
+    # Equation 18 in Amundson and Burton (2018)
+    g_loc = np.zeros(len(mu))
+    g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
     
+    # Essentially Equation 19 in Amundson and Burton (2018)
+    zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
+
+    # construct equation Cx=T
+    # boundary conditions: 
+    #    g=0 at x=0, L (implies strain rate = 0??? or infinite???)
+    #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
+    
+    c_left = np.ones(len(mu)-1)
+    c_left[-1] = -1
+    
+    c = -(2+zeta*dx**2)
+    c[0] = -1
+    c[-1] = 1
+        
+    c_right = np.ones(len(mu)-1) 
+    
+    diagonals = [c_left,c,c_right]
+    C = diags(diagonals,[-1,0,1]).toarray() 
+    
+    T = -g_loc*zeta*dx**2
+    T[0] = 0
+    T[-1] = 0
+        
+    gg_new = np.linalg.solve(C,T) # solve for granular fluidity
+    
+        
+    
+    
+    dgg = gg-gg_new # difference between previous and current iterations
+    
+    return(dgg)
+
 
 #%%
-def get_mu(x,U,H,W,dx):
+def get_mu(x,U,H,W,dx,ee_chi,L):
     '''
     After determining the velocity profile with fsolve, go back and retrieve
     the effective coefficients of friction.
@@ -250,23 +226,31 @@ def get_mu(x,U,H,W,dx):
     '''
     
     # calculate mu given the current velocity profile
-    _, mu, _ = calc_mu(x,U,H,dx)
+    mu = calc_mu(ee_chi,H,L)
     
-    muW = muW_*np.ones(x.shape)
+    H_ = (H[:-1]+H[1:])/2
+    W_ = (W[:-1]+W[1:])/2
+    muW = muW_*np.ones(H_.shape)
     
     # calculate mu_w given the current velocity profile
     for k in range(len(muW)):
-        result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})
-        #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
-        muW[k]  = result.x
+        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-12})#xtol=1e-12)#, options={'disp': True})
+        result = result.x
+        
+        if result < muS:
+            muW[k] = muS
+        elif result >= mu0:
+            muW[k] = mu0-0.0001
+        else:
+            muW[k]  = result
             
     return(mu,muW)
-    
+
 #%%
-def velocity(U,x,Ut,H,W,dx):
+def convergence(UH,x,X,Ut,H,W,dx,dt,U_prev,H_prev,B):
     '''
     Primary code for calculating the longitudinal velocity profiles with the
-    nonlocal granular fluidity rheology.
+    mu(I) rheology. Use this with root.
 
     Parameters
     ----------
@@ -274,64 +258,191 @@ def velocity(U,x,Ut,H,W,dx):
     Ut : width-avergaed terminus velocity [m s^-1]
     U : initial guess of the width-averaged velocity [m s^-1]
     H : ice melange thickness [m]
-    W : fjord width [m]
+    W : fjord width, on the staggered grid [m]
     dx : grid spacing [m]
-
+    UH : array that contains U on the grid and H on the staggered grid
+    
     Returns
     -------
-    dU : difference in width-averaged velocity from one fsolve iteration to 
+    dU : difference in width-averaged velocity from one iteration to 
     the next [m s^-1]
 
     '''
-    # U is the initial guess for the velocity
-    # plt.figure(figsize=(10,8))
-    # ax1 = plt.subplot(311)
-    # ax2 = plt.subplot(312)
-    # ax3 = plt.subplot(313)
-
-    muW = muW_*np.ones(x.shape)
     
-    nu, mu, ee = calc_mu(x,U,H,dx)
+    # velocity and thickness are needed in the iterations
+    U = UH[:len(x)]
+    H = UH[len(x):]
+    
+    # first use implicit time step to find x_L, x_t, and L
+    # xL^{n}  = xL^{n-1}+U_L^{n}*dt
+    xL = X[-1] + U[-1]*dt # position of end of ice melange
+    xt = X[0] + U[0]*dt # terminus position
+    L = xL-xt # ice melange length
+    
+    # use current values of U and H to solve for U and H
+    U_new = velocity(U,x,X,Ut,H,W,dx,L)
+    H_new = time_step(x,dx,dt,U,U_prev,H_prev,W,L,B)
+    
+    UH_new = np.append(U_new,H_new)
+        
+    dU = UH-UH_new    
+    
+    return(dU)
+
+#%%    
+def time_step(x,dx,dt,U,U_prev,H_prev,W,L,Bdot):    
+    '''
+    Calculates the ice melange thickness profile, using an implicit time step. 
+    The thickness depends on the current velocity as well as the velocity and
+    thickness from the previous time step.
+
+    Parameters
+    ----------
+    x : grid, in transformed coordinate system
+    dx : grid spacing, in transformed coordinate system
+        DESCRIPTION.
+    dt : time step [s]
+    U : ice melange velocity [m/s]
+    U_prev : ice melange velocity from previous time step [m/s]
+    H_prev : ice melange thickness from previous time step, on the staggered grid [m]
+    W : fjord width, on the staggered grid [m]
+    L : ice melange length [m]; needs to be determined using an implicit time step [m]
+    Bdot : surface + basal mass balance rate [m/s]; can be specified as a scalar or a vector on the staggered grid
+
+    Returns
+    -------
+    H_new : thickness for the next iteration; H must be adjusted iteratively 
+    until H_new= H
+
+    '''
+    
+    xs = (x[:-1]+x[1:])/2 # staggered grid in the transformed coordinate system
+    
+    beta = U[0]-U_prev[0]+xs*(U[-1]-U[0]-U_prev[-1]+U_prev[0])
+                                  
+    b_left = dt/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
+    b_left[-1] = dt/(dx*L)*(beta[-1]-0.5*W[-2]/W[-1]*(U[-2]+U[-3]))
+    
+    b = 1 + dt/(2*dx*L)*(U[2:]+U[1:-1])
+    b[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2]))
+    b = np.append(1+beta[0]*dt/(L*dx)-dt/(2*L*dx)*(U[1]+U[0]), b)
+    
+    b_right = -dt/(2*dx*L)*(U[0]-U_prev[0]+xs[1:]*(U[-1]-U[0]-U_prev[-1]+U_prev[0]))
+    b_right[0] = dt/(L*dx)*(-beta[0]+0.5*W[1]/W[0]*(U[2]+U[1]))
+    
+    TT = Bdot*dt + H_prev
+    
+    diagonals = [b_left,b,b_right]
+    DD = diags(diagonals,[-1,0,1]).toarray()
+    
+    H_new = np.linalg.solve(DD,TT)
+
+    return(H_new)
+    
+    
+#%%
+def velocity(U,x,X,Ut,H,W,dx,L):
+    '''
+    Calculates the longitudinal velocity profile, which depends on the current
+    velocity and ice thickness. The velocity must therefore be calculated
+    iteratively.
+
+    Parameters
+    ----------
+    U : ice melange velocity, to be determined iteratively [m/s]
+    x : grid, in transformed coordinate system 
+    X : grid [m]
+    Ut : glacier terminus velocity [m/s]; LATER NEED TO ADJUST FOR CALVING
+    H : ice melange thickness on the staggered grid [m]
+    W : fjord width, on the staggered grid [m]
+    dx : grid spacing, in transformed coordinate system
+    L : ice melange length [L]; in the initial time step it is determined from 
+    the ice melange geometry, but in subsequent time steps it needs to be
+    determined using an implicit time step.
+    
+    Returns
+    -------
+    U_new : velocity for the next iteration; U must be adjusted iteratively
+    until U_new = U
+
+    '''
+    
+    ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
+    # transformed coordinate system
     
         
+    
+    mu = 2*muS*np.ones(len(x)-1) # initial guess for mu
+    gg = (ee_chi/L)/mu # initial guess for the granular fluidity
+    
+    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='hybr', options={'xtol':1e-6})
+    gg = gg.x
+     
+      
+    
+    nu = 1/gg
+    
+    # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
+    H_ = (H[:-1]+H[1:])/2 # thickness on the grid
+    W_ = (W[:-1]+W[1:])/2 # width on the grid        
+    muW = muW_*np.ones(H_.shape) # construct initial array for muW on the grid points
+        
+    ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
-    for k in range(len(muW)):
-        
-        #muW[k] = fsolve(calc_muW, muW, (H[k],W[k],U[k]), xtol=0.1/secsYear)
-        result = root(calc_muW, muW_, (H[k],W[k],U[k]), method='lm', options={'xtol':1e-6})
-        #result = minimize(calc_muW, muW_, (H[k],W[k],U[k]),  method='COBYLA', constraints=[nonlocal_constraint], tol=1e-6)#, options={'disp': True})
+    for k in range(len(H_)):
+        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='hybr', options={'xtol':1e-6})
         muW[k] = result.x
-    
-    # constructing matrix Dx = T to solve for velocity        
-    T = ((2*H[:-1]-d)*np.diff(H)*dx + 2*muW[:-1]/W[:-1]*H[:-1]**2*np.sign(U[:-1])*dx**2)
-    T[0] = Ut # upstream boundary moves at terminus velocity
-    T = np.append(T,(1-d/H[-1])*ee[-1]/mu[-1]) # downstream boundary condition             
-    
-    A = nu[:-1]
-    B = -(nu[:-1]+nu[1:])
-    C = nu[1:]
-
-    # use a_left, a, and a_right define the diagonals of D
-    a_left = np.append(A, -1)
-    
-    a = np.ones(len(T)) # set to positive one because default is to set strain rate equal to zero
-    a[1:-1] = B
-    a[-1] = 1
-                               
-    a_right = np.append(0,C)
         
+    a_left = nu[:-1]*H[:-1]**2    
+    a_left = np.append(a_left,-1)
+        
+    a = np.ones(len(U))
+    a[1:-1] = -(nu[1:]*H[1:]**2 + nu[:-1]*H[:-1]**2)
+    
+    a_right = nu[1:]*H[1:]**2
+    a_right = np.append(0,a_right)
+    
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray() 
-     
-    U_new = np.linalg.solve(D,T) # solve for velocity
+
+    T = (H[1:]+H[:-1]-d)*((H[1:]-H[:-1])*dx+dhh*L*dx**2) + L*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
+         
+    # upstream boundary condition; for now just set equal to terminus velocity; doesn't account for calving
+    T = np.append(Ut,T)
     
+    # downstream boundary condition
+    T = np.append(T,1/gg[-1]*(1-d/H[-1])) 
+     
+    U_new = np.linalg.solve(D,T) # solve for new velocity
+  
+    return(U_new)      
+
+
+#%%    
+def spinup(U,x,X,Ut,H,W,dx):
+    '''
+    Small little function that is used to iteratively determine the initial 
+    velocity, given the initial geometry and terminus velocity.
+
+    Parameters
+    ----------
+    U : ice melange velocity, to be solved for iteratively [m/s]
+    x : grid, in transformed coordinate system 
+    X : grid [m]
+    Ut : glacier terminus velocity [m/s]; LATER NEED TO ADJUST FOR CALVING
+    H : ice melange thickness on the staggered grid [m]
+    W : fjord width
+    dx : grid spacing, in transformed coordinate system
+
+    Returns
+    -------
+    dU : difference in ice melange velocity from one iteration to the next
+
+    '''
+    
+    L = X[-1]-X[0] # ice melange length [m]
+    
+    U_new = velocity(U,x,X,Ut,H,W,dx,L) # ice melange velocity based on previous iteration of U [m/s]
     dU = U-U_new
-
-              
-    return(dU)
-        
-
-
-
-
-
+    
+    return(dU)   

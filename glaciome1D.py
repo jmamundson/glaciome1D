@@ -10,8 +10,8 @@ from config import *
 import importlib
 
 # here you should specify the rheology that should be imported
-#rheology = 'granular_fluidity'
-rheology = 'muI'
+rheology = 'granular_fluidity'
+#rheology = 'muI'
 
 model = importlib.import_module(rheology)
 
@@ -25,7 +25,7 @@ model = importlib.import_module(rheology)
 """
 
 
-#%%
+#%
 
 dt = secsDay*5 # time step [s]
 n = 21 # number of time steps
@@ -41,6 +41,7 @@ X = x*L # coordinates of unstretched grid
 W = 5000*np.ones(len(x)-1) # fjord width [m]; treated as constant for now
 H = np.ones(len(x)-1)*d # initial ice melange thickness [m]
 
+
 Ut = 10000/secsYear # width-averaged glacier terminus velocity [m/s]
 U = Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
 # can go haywire if this isn't chosen carefully...
@@ -48,8 +49,8 @@ U = Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
 
 # determine velocity profile that is consistent with initial thickness; unlike 
 # subsequent steps this does not involve an implicit time step
-U = root(model.spinup, U, (x,X,Ut,H,W,dx), method='hybr', options={'xtol':1e-24})
-U = U.x
+U = root(model.spinup, U, (x,X,Ut,H,W,dx), method='hybr', options={'xtol':1e-12})
+#U = U.x
 
 #%%
 plt.figure(figsize=(12,8))
@@ -85,10 +86,10 @@ ax1.plot(X,U*secsYear,color=plt.cm.viridis(color_id[0]))
 ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[0]))
 
 ee_chi = second_invariant(U,dx)
-mu, muW = model.get_mu(x,U,H,W,dx,ee_chi,L)
+#mu, muW = model.get_mu(x,U,H,W,dx,ee_chi,L)
 
-ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[0]))
-ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[0]))
+#ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[0]))
+#ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[0]))
 
 # concatenate U and H since the implicit time step requires that they are
 # iteratively solved simultaneously
@@ -112,14 +113,14 @@ for k in np.arange(1,n):
     X = np.linspace(xt,xL,len(x))
     
     
-    ee_chi = second_invariant(U,dx)
-    mu, muW = model.get_mu(x,U,H,W,dx,ee_chi,X[-1]-X[0])
+    # ee_chi = second_invariant(U,dx)
+    # mu, muW = model.get_mu(x,U,H,W,dx,ee_chi,X[-1]-X[0])
     
     
     ax1.plot(X,U*secsYear,color=plt.cm.viridis(color_id[k]))
     ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[k]))
-    ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[k]))
-    ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
+    # ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[k]))
+    # ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
 
 plt.tight_layout()
 plt.savefig('test.png',format='png',dpi=300)

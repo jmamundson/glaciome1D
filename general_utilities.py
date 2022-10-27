@@ -20,7 +20,10 @@ from matplotlib import pyplot as plt
 
 #%% calculate second invariant of the strain rate with respect to chi (stretched grid)
 def second_invariant(U,dx):
-    ee_chi = np.sqrt((np.diff(U)/dx)**2)+dee
+    ee_chi = np.sqrt((np.diff(U)/dx)**2/2)+dee
+        
+    # ee_chi = np.sqrt(np.gradient(U,dx)**2/2) + dee
+    # ee_chi = ee_chi[:-1]
     
     return(ee_chi)
 

@@ -176,7 +176,7 @@ def get_mu(x,U,H,W,dx,ee_chi,L):
     
     # calculate mu_w given the current velocity profile
     for k in range(len(muW)):
-        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-12})#xtol=1e-12)#, options={'disp': True})
+        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='hybr', options={'xtol':1e-12})#xtol=1e-12)#, options={'disp': True})
         result = result.x
         
         if result < muS:
