@@ -314,7 +314,9 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     
     mu = calc_mu(ee_chi,H,L)
     
-    nu = (mu-muS)/ee_chi # this needs to be checked/discussed
+    #nu = (mu-muS)/ee_chi # this needs to be checked/discussed
+    nu = mu/ee_chi
+    
     
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
     H_ = (H[:-1]+H[1:])/2 # thickness on the grid
@@ -346,8 +348,9 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray() 
-
-    T = (H[1:]+H[:-1]-d)*((H[1:]-H[:-1])*dx+dhh*L*dx**2) + L*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
+    
+    #T = (H[1:]+H[:-1]-d)*((H[1:]-H[:-1])*dx+dhh*L*dx**2) + L*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
+    T = (H[1:]+H[:-1]-d*(1-muS*np.sqrt(2)))*((H[1:]-H[:-1])*dx+dhh*L*dx**2) + L*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
     
     # upstream boundary condition; for now just set equal to terminus velocity; doesn't account for calving
     T = np.append(Ut,T)

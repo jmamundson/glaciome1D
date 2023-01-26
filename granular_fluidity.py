@@ -1,3 +1,5 @@
+# SOMETHING STRANGE GOING ON WITH THE COORDINATE TRANSFORMATION!!!!
+
 # muI.py contains tools for using the mu(I) rheology
 # many of these functions can probably be used in the granular fluidity
 # if so, move them into general utilities
@@ -52,7 +54,7 @@ def transverse(W,muS,muW,H,d,A,b):
     y_c = W/2*(1-muS/muW) # critical value of y for which mu is no longer greater 
     # than muS; although flow occurs below this critical value, it is needed for 
     # computing g_loc (below)
-    
+       
     zeta = np.sqrt(np.abs(mu-muS))/(A*d)
     
     g_loc = np.zeros(len(y))
@@ -98,7 +100,6 @@ def transverse(W,muS,muW,H,d,A,b):
     # boundary conditions: u(0) = 0; du/dy = 0 at y = W/2
     
     u = np.linalg.solve(D,f)
-    u = u*secsDay
     
     u_mean = np.mean(u)
     
@@ -162,10 +163,11 @@ def calc_gg(gg,ee_chi,H,L,dx):
     mu : effective coefficient of friction
     
     '''
-              
-    mu = (ee_chi/L)/gg
     
-            
+    ee = ee_chi/L  
+             
+    mu = ee/gg
+    
     # Equation 18 in Amundson and Burton (2018)
     g_loc = np.zeros(len(mu))
     g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
@@ -181,7 +183,7 @@ def calc_gg(gg,ee_chi,H,L,dx):
     c_left = np.ones(len(mu)-1)
     c_left[-1] = -1
     
-    c = -(2+zeta*dx**2)
+    c = -(2+zeta*(L*dx)**2)
     c[0] = -1
     c[-1] = 1
         
@@ -190,22 +192,21 @@ def calc_gg(gg,ee_chi,H,L,dx):
     diagonals = [c_left,c,c_right]
     C = diags(diagonals,[-1,0,1]).toarray() 
     
-    T = -g_loc*zeta*dx**2
+    T = -g_loc*zeta*(L*dx)**2
     T[0] = 0
     T[-1] = 0
         
     gg_new = np.linalg.solve(C,T) # solve for granular fluidity
     
+    
         
-    
-    
     dgg = gg-gg_new # difference between previous and current iterations
     
     return(dgg)
 
 
 #%%
-def get_mu(x,U,H,W,dx,ee_chi,L):
+def get_mu(x,U,H,W,L,dx):
     '''
     After determining the velocity profile with fsolve, go back and retrieve
     the effective coefficients of friction.
@@ -225,24 +226,25 @@ def get_mu(x,U,H,W,dx,ee_chi,L):
 
     '''
     
-    # calculate mu given the current velocity profile
-    mu = calc_mu(ee_chi,H,L)
+    ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
+    # transformed coordinate system
+    
+    gg = 1e-9*np.ones(len(x)-1) # initial guess for the granular fluidity
+    
+    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
+    #print(gg.success)
+    gg = gg.x
+    
+    mu = (ee_chi/L)/gg
     
     H_ = (H[:-1]+H[1:])/2
     W_ = (W[:-1]+W[1:])/2
     muW = muW_*np.ones(H_.shape)
     
     # calculate mu_w given the current velocity profile
-    for k in range(len(muW)):
-        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-12})#xtol=1e-12)#, options={'disp': True})
-        result = result.x
-        
-        if result < muS:
-            muW[k] = muS
-        elif result >= mu0:
-            muW[k] = mu0-0.0001
-        else:
-            muW[k]  = result
+    for k in range(len(H_)):
+        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
+        muW[k] = result.x
             
     return(mu,muW)
 
@@ -370,16 +372,12 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
     # transformed coordinate system
     
-        
+    gg = 1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
     
-    mu = 2*muS*np.ones(len(x)-1) # initial guess for mu
-    gg = (ee_chi/L)/mu # initial guess for the granular fluidity
-    
-    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='hybr', options={'xtol':1e-6})
-    gg = gg.x
+    #gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
+    #print(gg.success)
+    #gg = gg.x
      
-      
-    
     nu = 1/gg
     
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
@@ -390,8 +388,9 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='hybr', options={'xtol':1e-6})
+        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
         muW[k] = result.x
+    
         
     a_left = nu[:-1]*H[:-1]**2    
     a_left = np.append(a_left,-1)
@@ -405,13 +404,13 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray() 
 
-    T = (H[1:]+H[:-1]-d)*((H[1:]-H[:-1])*dx+dhh*L*dx**2) + L*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
+    T = L*((H[1:]+H[:-1])/2)*(H[1:]-H[:-1])*dx + 0.5*L**2*(H[1:]+H[:-1])**2/(W[1:]+W[:-1])*muW*np.sign(U[1:-1])*dx**2
          
     # upstream boundary condition; for now just set equal to terminus velocity; doesn't account for calving
     T = np.append(Ut,T)
     
     # downstream boundary condition
-    T = np.append(T,1/gg[-1]*(1-d/H[-1])) 
+    T = np.append(T,0.5*gg[-1]*dx) 
      
     U_new = np.linalg.solve(D,T) # solve for new velocity
   
@@ -419,7 +418,7 @@ def velocity(U,x,X,Ut,H,W,dx,L):
 
 
 #%%    
-def spinup(U,x,X,Ut,H,W,dx):
+def spinup(U,x,X,Ut,H,W,dx,dt):
     '''
     Small little function that is used to iteratively determine the initial 
     velocity, given the initial geometry and terminus velocity.
@@ -440,7 +439,10 @@ def spinup(U,x,X,Ut,H,W,dx):
 
     '''
     
-    L = X[-1]-X[0] # ice melange length [m]
+    xL = X[-1]+U[-1]*dt
+    xt = X[0] + U[0]*dt
+    
+    L = xL-xt # ice melange length [m]
     
     U_new = velocity(U,x,X,Ut,H,W,dx,L) # ice melange velocity based on previous iteration of U [m/s]
     dU = U-U_new
