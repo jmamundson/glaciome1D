@@ -1,3 +1,7 @@
+#### WARNING ####
+# Because of how the global variables are currently imported, the interpreter
+# needs to be re-started if any changes are made to the them.
+
 import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib
@@ -29,11 +33,11 @@ model = importlib.import_module(rheology)
 dt = secsDay*10 # time step [s]
 n = 21 # number of time steps
 
-B = 0/secsYear # mass balance rate [m s^-1]
+B = -5/secsYear # mass balance rate [m s^-1]
 
 x0 = 0 # left boundary of the melange [m]
 L = 10000 # initial ice melange length [m]
-dx = 0.2   # grid spacing [m]
+dx = 0.1   # grid spacing [m]
 x = np.arange(0,1+dx,dx) # longitudinal grid
 X = x*L # coordinates of unstretched grid
 
@@ -46,14 +50,14 @@ H = np.ones(len(x)-1)*d # initial ice melange thickness [m]
 
 
 Ut = 10000/secsYear # width-averaged glacier terminus velocity [m/s]
-U = Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
+U = 0*Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
 
 
 
 # determine velocity profile that is consistent with initial thickness; unlike 
 # subsequent steps this does not involve an implicit time step
-U = root(model.spinup, U, (x,X,Ut,H,W,dx,dt), method='lm', options={'xtol':1e-6})
-U = U.x
+#U = root(model.spinup, U, (x,X,Ut,H,W,dx,dt), method='lm', options={'xtol':1e-6})
+#U = U.x
 
 #%%
 
@@ -72,25 +76,25 @@ ax1 = plt.axes([left, bot+ax_height+2.25*ygap, ax_width, ax_height])
 ax1.set_xlabel('Longitudinal coordinate [m]')
 ax1.set_ylabel('Speed [m/yr]')
 ax1.set_ylim([-1000,11000])
-ax1.set_xlim([0,13000])
+ax1.set_xlim([0,10000])
 
 ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+2.25*ygap, ax_width, ax_height])
 ax2.set_xlabel('Longitudinal coordinate [m]')
 ax2.set_ylabel('Thickness [m]')
 ax2.set_ylim([0, 100])
-ax2.set_xlim([0,13000])
+ax2.set_xlim([0,10000])
 
 ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
 ax3.set_xlabel('Longitudinal coordinate [m]')
 ax3.set_ylabel('$\mu$')
-ax3.set_ylim([0, 0.9])
-ax3.set_xlim([0,13000])
+ax3.set_ylim([0, 2])
+ax3.set_xlim([0,10000])
 
 ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
 ax4.set_xlabel('Longitudinal coordinate [m]')
 ax4.set_ylabel('$\mu_w$')
-ax4.set_ylim([0.1, 0.9])
-ax4.set_xlim([0,13000])
+ax4.set_ylim([0.1, 2])
+ax4.set_xlim([0,10000])
 
 ax_cbar = plt.axes([left, bot, 2*ax_width+xgap, ax_height/15])
 
