@@ -170,7 +170,7 @@ def calc_gg(gg,ee_chi,H,L,dx):
     
     # Equation 18 in Amundson and Burton (2018)
     g_loc = np.zeros(len(mu))
-    g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/(rho*d**2))*(mu[mu>muS]-muS)/(mu[mu>muS]*b) 
+    g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/rho)*(mu[mu>muS]-muS)/(mu[mu>muS]*b*d) 
     
     # Essentially Equation 19 in Amundson and Burton (2018)
     zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2

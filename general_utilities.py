@@ -77,3 +77,22 @@ def thickness(W,L,H_L,mu0):
         H[j] = fsolve(H_x,H_guess,x[j])
     
     return(x,H)
+
+#%% ice melange calving
+
+#%% width
+
+def width(X):
+    
+    W = 4000*np.ones(len(X))
+    
+    #W = -4/8*X+8000
+    #W[X<0] = 8000
+    #W[X>8000] = 2000
+    
+    
+    
+    return(W)
+    
+
+
