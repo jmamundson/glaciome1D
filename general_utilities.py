@@ -11,7 +11,7 @@ from scipy import sparse
 from scipy.optimize import fsolve
 from scipy.sparse import diags
 
-from config import *
+import config
 
 from matplotlib import pyplot as plt
 
@@ -20,7 +20,7 @@ from matplotlib import pyplot as plt
 
 #%% calculate second invariant of the strain rate with respect to chi (stretched grid)
 def second_invariant(U,dx):
-    ee_chi = np.sqrt((np.diff(U)/dx)**2/2)+dee
+    ee_chi = np.sqrt((np.diff(U)/dx)**2/2)+config.dee
         
     # ee_chi = np.sqrt(np.gradient(U,dx)**2/2) + dee
     # ee_chi = ee_chi[:-1]
@@ -35,7 +35,7 @@ def second_invariant(U,dx):
 # mu0 = coefficient of friction at yield stress
 def pressure(H):
     
-    P = 0.5*rho*g*(1-rho/rho_w)*H
+    P = 0.5*config.rho*config.g*(1-config.rho/config.rho_w)*H
     
     return(P)
 
@@ -58,7 +58,7 @@ def force(H_L,mu0):
         H_ratio[j] = fsolve(H_0,H_guess,ratio[j])
         
         
-    F = 0.5*rho*g*(1-rho/rho_w)*H_ratio*(H_ratio-H_L)
+    F = 0.5*config.rho*config.g*(1-config.rho/config.rho_w)*H_ratio*(H_ratio-H_L)
     
     return(ratio,F)
 

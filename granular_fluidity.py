@@ -11,7 +11,7 @@ from scipy.sparse import diags
 from scipy.optimize import minimize
 from scipy.optimize import root
 
-from config import *
+import config
 
 from general_utilities import pressure
 from general_utilities import second_invariant
@@ -58,7 +58,7 @@ def transverse(W,muS,muW,H,d,A,b):
     zeta = np.sqrt(np.abs(mu-muS))/(A*d)
     
     g_loc = np.zeros(len(y))
-    g_loc[y<y_c] = np.sqrt(P/rho)*(mu[y<y_c]-muS)/(mu[y<y_c]*b*d) # local granular fluidity
+    g_loc[y<y_c] = np.sqrt(P/config.rho)*(mu[y<y_c]-muS)/(mu[y<y_c]*b*d) # local granular fluidity
     
     # first solve for the granular fluidity. we set dg/dy = 0 at
     # y = 0 and at y = W/2    
@@ -133,7 +133,7 @@ def calc_muW(muW, H, W, U):
 
     '''
     
-    _, _, u_mean = transverse(W,muS,muW,H,d,A,b)
+    _, _, u_mean = transverse(W,config.muS,muW,H,config.d,config.A,config.b)
     
     # take into account that flow might be in the negative direction
     if U<0:
@@ -170,10 +170,10 @@ def calc_gg(gg,ee_chi,H,L,dx):
     
     # Equation 18 in Amundson and Burton (2018)
     g_loc = np.zeros(len(mu))
-    g_loc[mu>muS] = np.sqrt(pressure(H[mu>muS])/rho)*(mu[mu>muS]-muS)/(mu[mu>muS]*b*d) 
+    g_loc[mu>config.muS] = np.sqrt(pressure(H[mu>config.muS])/config.rho)*(mu[mu>config.muS]-config.muS)/(mu[mu>config.muS]*config.b*config.d) 
     
     # Essentially Equation 19 in Amundson and Burton (2018)
-    zeta = np.abs(mu-muS)/(A**2*d**2) # zeta = 1/xi^2
+    zeta = np.abs(mu-config.muS)/(config.A**2*config.d**2) # zeta = 1/xi^2
 
     # construct equation Cx=T
     # boundary conditions: 
@@ -239,11 +239,11 @@ def get_mu(x,U,H,W,L,dx):
     
     H_ = (H[:-1]+H[1:])/2
     W_ = (W[:-1]+W[1:])/2
-    muW = muW_*np.ones(H_.shape)
+    muW = config.muW_*np.ones(H_.shape)
     
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
+        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
         muW[k] = result.x
             
     return(mu,muW)
@@ -383,12 +383,12 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
     H_ = (H[:-1]+H[1:])/2 # thickness on the grid
     W_ = (W[:-1]+W[1:])/2 # width on the grid        
-    muW = muW_*np.ones(H_.shape) # construct initial array for muW on the grid points
+    muW = config.muW_*np.ones(H_.shape) # construct initial array for muW on the grid points
         
     ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
+        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
         muW[k] = result.x
     
         

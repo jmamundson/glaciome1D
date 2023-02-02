@@ -10,7 +10,7 @@ from scipy.optimize import root
 
 from general_utilities import second_invariant, width
 
-from config import *
+import config
 
 import importlib
 
@@ -30,10 +30,10 @@ model = importlib.import_module(rheology)
 
 #%
 
-dt = secsDay*10 # time step [s]
+dt = config.secsDay*10 # time step [s]
 n = 21 # number of time steps
 
-B = -5/secsYear # mass balance rate [m s^-1]
+B = -5/config.secsYear # mass balance rate [m s^-1]
 
 x0 = 0 # left boundary of the melange [m]
 L = 10000 # initial ice melange length [m]
@@ -46,10 +46,10 @@ W = width((X[:-1]+X[1:])/2)
 #W = 4000*np.ones(len(x)-1) # fjord width [m]; treated as constant for now
 # W needs to move with the grid...
 
-H = np.ones(len(x)-1)*d # initial ice melange thickness [m]
+H = np.ones(len(x)-1)*config.d # initial ice melange thickness [m]
 
 
-Ut = 10000/secsYear # width-averaged glacier terminus velocity [m/s]
+Ut = 10000/config.secsYear # width-averaged glacier terminus velocity [m/s]
 U = 0*Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
 
 
@@ -98,10 +98,10 @@ ax4.set_xlim([0,10000])
 
 ax_cbar = plt.axes([left, bot, 2*ax_width+xgap, ax_height/15])
 
-cbar_ticks = np.linspace(0, (n-1)*dt/secsDay, 11, endpoint=True)
+cbar_ticks = np.linspace(0, (n-1)*dt/config.secsDay, 11, endpoint=True)
 cmap = matplotlib.cm.viridis
 bounds = cbar_ticks
-norm = matplotlib.colors.Normalize(vmin=0, vmax=(n-1)*dt/secsDay)
+norm = matplotlib.colors.Normalize(vmin=0, vmax=(n-1)*dt/config.secsDay)
 cb = matplotlib.colorbar.ColorbarBase(ax_cbar, cmap=cmap, norm=norm,
                                 orientation='horizontal')#,extend='min')
 cb.set_label("Time [d]")
@@ -113,7 +113,7 @@ color_id = np.linspace(0,1,n)
 
 
 # plot initial time step
-ax1.plot(X,U*secsYear,color=plt.cm.viridis(color_id[0]))
+ax1.plot(X,U*config.secsYear,color=plt.cm.viridis(color_id[0]))
 ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[0]))
 
 mu, muW = model.get_mu(x,U,H,W,X[-1]-X[0],dx)
@@ -127,7 +127,7 @@ UH = np.append(U,H)
 
 
 for k in np.arange(1,n):
-    print('Time: ' + "{:.0f}".format(k*dt/secsDay) + ' days')     
+    print('Time: ' + "{:.0f}".format(k*dt/config.secsDay) + ' days')     
 
     UH = root(model.convergence, UH, (x,X,Ut,H,W,dx,dt,U,H,B), method='hybr', options={'xtol':1e-6})
     UH = UH.x
@@ -147,7 +147,7 @@ for k in np.arange(1,n):
     W = width((X[:-1]+X[1:])/2)
     
     
-    ax1.plot(X,U*secsYear,color=plt.cm.viridis(color_id[k]))
+    ax1.plot(X,U*config.secsYear,color=plt.cm.viridis(color_id[k]))
     ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[k]))
     ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[k]))
     ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
