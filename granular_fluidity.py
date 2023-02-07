@@ -19,7 +19,7 @@ from general_utilities import second_invariant
 from matplotlib import pyplot as plt
 
 #%% solve transverse velocity for nonlocal rheology
-def transverse(W,muS,muW,H,d,A,b): 
+def transverse(W,muW,H): 
     '''
     Calculates transverse velocity profiles for the nonlocal granular fluidity
     rheology. See Amundson and Burton (2018) for details.
@@ -42,7 +42,7 @@ def transverse(W,muS,muW,H,d,A,b):
 
     '''
     
-    P = pressure(H)
+    #P = pressure(H)
     
     n_pts = 101 # number of points in half-space
     y = np.linspace(0,W/2,n_pts) # location of points
@@ -51,14 +51,15 @@ def transverse(W,muS,muW,H,d,A,b):
 
     mu = muW*(1-2*y/W)
 
-    y_c = W/2*(1-muS/muW) # critical value of y for which mu is no longer greater 
+    y_c = W/2*(1-config.muS/muW) # critical value of y for which mu is no longer greater 
     # than muS; although flow occurs below this critical value, it is needed for 
     # computing g_loc (below)
        
-    zeta = np.sqrt(np.abs(mu-muS))/(A*d)
+    zeta = np.sqrt(np.abs(mu-config.muS))/(config.A*config.d)
     
     g_loc = np.zeros(len(y))
-    g_loc[y<y_c] = np.sqrt(P/config.rho)*(mu[y<y_c]-muS)/(mu[y<y_c]*b*d) # local granular fluidity
+    g_loc[y<y_c] = np.sqrt(pressure(H)/config.rho)*(mu[y<y_c]-config.muS)/(mu[y<y_c]*config.b*config.d) # local granular fluidity
+    
     
     # first solve for the granular fluidity. we set dg/dy = 0 at
     # y = 0 and at y = W/2    
@@ -133,7 +134,7 @@ def calc_muW(muW, H, W, U):
 
     '''
     
-    _, _, u_mean = transverse(W,config.muS,muW,H,config.d,config.A,config.b)
+    _, _, u_mean = transverse(W,muW,H)
     
     # take into account that flow might be in the negative direction
     if U<0:
@@ -166,11 +167,14 @@ def calc_gg(gg,ee_chi,H,L,dx):
     
     ee = ee_chi/L  
              
-    mu = ee/gg
+    mu = ee/(gg+config.dgg)
     
     # Equation 18 in Amundson and Burton (2018)
-    g_loc = np.zeros(len(mu))
-    g_loc[mu>config.muS] = np.sqrt(pressure(H[mu>config.muS])/config.rho)*(mu[mu>config.muS]-config.muS)/(mu[mu>config.muS]*config.b*config.d) 
+    #g_loc = np.zeros(len(mu))
+    #g_loc[mu>config.muS] = np.sqrt(pressure(H[mu>config.muS])/config.rho)*(mu[mu>config.muS]-config.muS)/(mu[mu>config.muS]*config.b*config.d) 
+    
+    g_loc = np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
+    g_loc[g_loc<0] = 0
     
     # Essentially Equation 19 in Amundson and Burton (2018)
     zeta = np.abs(mu-config.muS)/(config.A**2*config.d**2) # zeta = 1/xi^2
@@ -184,18 +188,21 @@ def calc_gg(gg,ee_chi,H,L,dx):
     c_left[-1] = -1
     
     c = -(2+zeta*(L*dx)**2)
-    c[0] = -1
+    #c[0] = -1 # uncomment to use first order approximation of boundary condition
     c[-1] = 1
         
     c_right = np.ones(len(mu)-1) 
+    
+    c_right[0] = 2 # comment to use first order approximation of boundary condition
     
     diagonals = [c_left,c,c_right]
     C = diags(diagonals,[-1,0,1]).toarray() 
     
     T = -g_loc*zeta*(L*dx)**2
-    T[0] = 0
+    #T[0] = 0 # uncomment to use first order approximation of boundary condition
     T[-1] = 0
         
+    
     gg_new = np.linalg.solve(C,T) # solve for granular fluidity
     
     
@@ -229,7 +236,7 @@ def get_mu(x,U,H,W,L,dx):
     ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
     # transformed coordinate system
     
-    gg = 1e-9*np.ones(len(x)-1) # initial guess for the granular fluidity
+    gg = 1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
     
     gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
     #print(gg.success)
@@ -243,7 +250,7 @@ def get_mu(x,U,H,W,L,dx):
     
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
+        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
         muW[k] = result.x
             
     return(mu,muW)
@@ -320,17 +327,19 @@ def time_step(x,dx,dt,U,U_prev,H_prev,W,L,Bdot):
     
     xs = (x[:-1]+x[1:])/2 # staggered grid in the transformed coordinate system
     
-    beta = U[0]-U_prev[0]+xs*(U[-1]-U[0]-U_prev[-1]+U_prev[0])
+    beta = U[0]+xs*(U[-1]-U[0]-U_prev[-1]+U_prev[0])
                                   
     b_left = dt/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
     b_left[-1] = dt/(dx*L)*(beta[-1]-0.5*W[-2]/W[-1]*(U[-2]+U[-3]))
     
     b = 1 + dt/(2*dx*L)*(U[2:]+U[1:-1])
-    b[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2]))
+    b[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) # check sign in front of beta!
     b = np.append(1+beta[0]*dt/(L*dx)-dt/(2*L*dx)*(U[1]+U[0]), b)
+    #test
+    b[0] = 1 + dt/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
     
-    b_right = -dt/(2*dx*L)*(U[0]-U_prev[0]+xs[1:]*(U[-1]-U[0]-U_prev[-1]+U_prev[0]))
-    b_right[0] = dt/(L*dx)*(-beta[0]+0.5*W[1]/W[0]*(U[2]+U[1]))
+    b_right = -dt/(2*dx*L)*beta[1:]
+    b_right[0] = dt/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
     
     TT = Bdot*dt + H_prev
     
@@ -374,10 +383,11 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     
     gg = 1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
     
-    #gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
+    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
     #print(gg.success)
-    #gg = gg.x
-     
+    gg = gg.x
+    
+    
     nu = 1/gg
     
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
@@ -388,7 +398,7 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-9})
+        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
         muW[k] = result.x
     
         
@@ -410,8 +420,8 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     T = np.append(Ut,T)
     
     # downstream boundary condition
-    T = np.append(T,0.5*gg[-1]*dx) 
-     
+    T = np.append(T,gg[-1]*dx*L) 
+    
     U_new = np.linalg.solve(D,T) # solve for new velocity
   
     return(U_new)      

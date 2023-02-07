@@ -30,14 +30,14 @@ model = importlib.import_module(rheology)
 
 #%
 
-dt = config.secsDay*10 # time step [s]
-n = 21 # number of time steps
+dt = config.secsDay*20 # time step [s]
+n = 6 # number of time steps
 
-B = -5/config.secsYear # mass balance rate [m s^-1]
+B = -0/config.secsYear # mass balance rate [m s^-1]
 
 x0 = 0 # left boundary of the melange [m]
 L = 10000 # initial ice melange length [m]
-dx = 0.1   # grid spacing [m]
+dx = 0.05   # grid spacing [m]
 x = np.arange(0,1+dx,dx) # longitudinal grid
 X = x*L # coordinates of unstretched grid
 
@@ -50,23 +50,24 @@ H = np.ones(len(x)-1)*config.d # initial ice melange thickness [m]
 
 
 Ut = 10000/config.secsYear # width-averaged glacier terminus velocity [m/s]
-U = 0*Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
+U = Ut*(1-x) # initial guess for the averaged velocity [m/s]; the model
 
 
 
 # determine velocity profile that is consistent with initial thickness; unlike 
 # subsequent steps this does not involve an implicit time step
-#U = root(model.spinup, U, (x,X,Ut,H,W,dx,dt), method='lm', options={'xtol':1e-6})
-#U = U.x
+U = root(model.spinup, U, (x,X,Ut,H,W,dx,dt), method='lm', options={'xtol':1e-6})
+U = U.x
 
 #%%
 
-fig_width = 12
-fig_height = 8
-plt.figure(figsize=(12,8))
 
-ax_width = 4.75/fig_width
-ax_height = 2.75/fig_height
+fig_width = 12
+fig_height = 6.5
+plt.figure(figsize=(fig_width,fig_height))
+
+ax_width = 3/fig_width
+ax_height = 2/fig_height
 left = 1/fig_width
 bot = 0.5/fig_height
 ygap = 0.75/fig_height
@@ -74,8 +75,8 @@ xgap= 1/fig_width
 
 ax1 = plt.axes([left, bot+ax_height+2.25*ygap, ax_width, ax_height])
 ax1.set_xlabel('Longitudinal coordinate [m]')
-ax1.set_ylabel('Speed [m/yr]')
-ax1.set_ylim([-1000,11000])
+ax1.set_ylabel('Speed [m/d]')
+ax1.set_ylim([0,40])
 ax1.set_xlim([0,10000])
 
 ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+2.25*ygap, ax_width, ax_height])
@@ -87,16 +88,22 @@ ax2.set_xlim([0,10000])
 ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
 ax3.set_xlabel('Longitudinal coordinate [m]')
 ax3.set_ylabel('$\mu$')
-ax3.set_ylim([0, 2])
+ax3.set_ylim([0, 10])
 ax3.set_xlim([0,10000])
 
 ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
 ax4.set_xlabel('Longitudinal coordinate [m]')
 ax4.set_ylabel('$\mu_w$')
-ax4.set_ylim([0.1, 2])
+ax4.set_ylim([0, 20])
 ax4.set_xlim([0,10000])
 
-ax_cbar = plt.axes([left, bot, 2*ax_width+xgap, ax_height/15])
+ax5 = plt.axes([left+2*(ax_width+xgap), bot+1.25*ygap, 0.75*ax_width, 2*ax_height+ygap])
+ax5.set_xlabel('Transverse coordinate [m]')
+ax5.set_ylabel(r'Speed at $\chi=0.2$ [m/d]')
+ax5.set_xlim([0,4000])
+ax5.set_ylim([0,40])
+
+ax_cbar = plt.axes([left, bot, 2*(ax_width+xgap)+0.75*ax_width, ax_height/15])
 
 cbar_ticks = np.linspace(0, (n-1)*dt/config.secsDay, 11, endpoint=True)
 cmap = matplotlib.cm.viridis
@@ -146,10 +153,14 @@ for k in np.arange(1,n):
     
     W = width((X[:-1]+X[1:])/2)
     
+    ind = int(len(W)/5) # index of midpoint in fjord
+    y, u_transverse, _ = model.transverse(W[ind],muW[ind],H[ind])
     
-    ax1.plot(X,U*config.secsYear,color=plt.cm.viridis(color_id[k]))
+    
+    ax1.plot(X,U*config.secsDay,color=plt.cm.viridis(color_id[k]))
     ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[k]))
     ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[k]))
     ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
+    ax5.plot(np.append(y,y+y[-1]),np.append(u_transverse,u_transverse[-1::-1])*config.secsDay,color=plt.cm.viridis(color_id[k]))
 
 

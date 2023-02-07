@@ -8,8 +8,6 @@ Created on Wed Jul 20 15:46:51 2022
 
 @author: jason
 """
-from scipy.optimize import LinearConstraint
-import numpy as np
 
 
 rho = 917.       # density of ice
@@ -21,14 +19,15 @@ daysYear = 365.25
 secsYear = secsDay*daysYear
 
 dee = 1e-16      # finite strain rate parameter
+dgg = 1e-16      # finite granular fluidity parameter
 
 d = 25 # characteristic iceberg size [m]
 
 
 # parameters for granular fluidity rheology
 A = 1
-b = 2e5
-muS = 0.4
+b = 1e7
+muS = 0.05
 muW_ = 2*muS
 
     # constants --> Needs some thought!
