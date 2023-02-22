@@ -165,7 +165,7 @@ def calc_gg(gg,ee_chi,H,L,dx):
     
     '''
     
-    ee = ee_chi/L  
+    ee = ee_chi*L  
              
     mu = ee/(gg+config.dgg)
     
@@ -176,6 +176,7 @@ def calc_gg(gg,ee_chi,H,L,dx):
     g_loc = np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
     g_loc[g_loc<0] = 0
     
+    
     # Essentially Equation 19 in Amundson and Burton (2018)
     zeta = np.abs(mu-config.muS)/(config.A**2*config.d**2) # zeta = 1/xi^2
 
@@ -184,29 +185,31 @@ def calc_gg(gg,ee_chi,H,L,dx):
     #    g=0 at x=0, L (implies strain rate = 0??? or infinite???)
     #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
     
+    bc = 'first-order' # specify whether boundary condition should be 'first-order' accurate or 'second-order' accurate
+    
     c_left = np.ones(len(mu)-1)
-    c_left[-1] = -1
-    
-    c = -(2+zeta*(L*dx)**2)
-    #c[0] = -1 # uncomment to use first order approximation of boundary condition
-    c[-1] = 1
-        
+    c = -(2+zeta*(L*dx)**2)    
     c_right = np.ones(len(mu)-1) 
-    
-    c_right[0] = 2 # comment to use first order approximation of boundary condition
+       
+    if bc=='second-order':
+        c_left[-1] = 2
+        c_right[0] = 2
+    elif bc=='first-order':
+        c_left[-1] = -1        
+        c[0] = -1 
+        c[-1] = 1 
     
     diagonals = [c_left,c,c_right]
     C = diags(diagonals,[-1,0,1]).toarray() 
     
     T = -g_loc*zeta*(L*dx)**2
-    #T[0] = 0 # uncomment to use first order approximation of boundary condition
-    T[-1] = 0
-        
     
+    if bc=='first-order':
+        T[0] = 0 
+        T[-1] = 0
+
     gg_new = np.linalg.solve(C,T) # solve for granular fluidity
-    
-    
-        
+            
     dgg = gg-gg_new # difference between previous and current iterations
     
     return(dgg)
@@ -238,9 +241,10 @@ def get_mu(x,U,H,W,L,dx):
     
     gg = 1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
     
-    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
+    #gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
     #print(gg.success)
-    gg = gg.x
+    #gg = gg.x
+    gg = fsolve(calc_gg, gg, (ee_chi,H,L,dx))
     
     mu = (ee_chi/L)/gg
     
@@ -250,9 +254,12 @@ def get_mu(x,U,H,W,L,dx):
     
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
-        muW[k] = result.x
-            
+        #result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
+        result = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]))
+        muW[k] = result
+        #muW[k] = result.x
+        
+        
     return(mu,muW)
 
 #%%
@@ -281,19 +288,21 @@ def convergence(UH,x,X,Ut,H,W,dx,dt,U_prev,H_prev,B):
     # velocity and thickness are needed in the iterations
     U = UH[:len(x)]
     H = UH[len(x):]
+    #L = UHL[-1]
     
     # first use implicit time step to find x_L, x_t, and L
     # xL^{n}  = xL^{n-1}+U_L^{n}*dt
-    xL = X[-1] + U[-1]*dt # position of end of ice melange
-    xt = X[0] + U[0]*dt # terminus position
+    xL = X[-1] + U_prev[-1]*dt # position of end of ice melange
+    xt = X[0] + U_prev[0]*dt # terminus position
     L = xL-xt # ice melange length
     
     # use current values of U and H to solve for U and H
     U_new = velocity(U,x,X,Ut,H,W,dx,L)
     H_new = time_step(x,dx,dt,U,U_prev,H_prev,W,L,B)
     
-    UH_new = np.append(U_new,H_new)
-        
+    #UHL_new = np.append(U_new,H_new)
+    UH_new = np.concatenate((U_new,H_new))    
+    
     dU = UH-UH_new    
     
     return(dU)
@@ -381,11 +390,13 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
     # transformed coordinate system
     
-    gg = 1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
+    gg = 1e-9*np.ones(len(x)-1) # initial guess for the granular fluidity
     
-    gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-6})
+    #gg = root(calc_gg, gg, (ee_chi,H,L,dx), method='lm', options={'xtol':1e-12})
+    #gg = gg.x
+    
+    gg = fsolve(calc_gg, gg, (ee_chi,H,L,dx))
     #print(gg.success)
-    gg = gg.x
     
     
     nu = 1/gg
@@ -398,13 +409,13 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     ## NOTE: THIS FOR LOOP CAN BE PARALELLIZED
     # calculate mu_w given the current velocity profile
     for k in range(len(H_)):
-        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
-        muW[k] = result.x
-    
+        #result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
+        #muW[k] = result.x
+        muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]))
         
     a_left = nu[:-1]*H[:-1]**2    
     a_left = np.append(a_left,-1)
-        
+    
     a = np.ones(len(U))
     a[1:-1] = -(nu[1:]*H[1:]**2 + nu[:-1]*H[:-1]**2)
     
@@ -420,15 +431,16 @@ def velocity(U,x,X,Ut,H,W,dx,L):
     T = np.append(Ut,T)
     
     # downstream boundary condition
-    T = np.append(T,gg[-1]*dx*L) 
+    T = np.append(T,0*0.5*gg[-1]*dx*L) 
     
     U_new = np.linalg.solve(D,T) # solve for new velocity
   
+    
     return(U_new)      
 
 
 #%%    
-def spinup(U,x,X,Ut,H,W,dx,dt):
+def spinup(U,x,X,L,Ut,H,W,dx,dt):
     '''
     Small little function that is used to iteratively determine the initial 
     velocity, given the initial geometry and terminus velocity.
@@ -448,13 +460,14 @@ def spinup(U,x,X,Ut,H,W,dx,dt):
     dU : difference in ice melange velocity from one iteration to the next
 
     '''
+    #U = UL[:-1]
+    #L = UL[-1]
     
-    xL = X[-1]+U[-1]*dt
-    xt = X[0] + U[0]*dt
+    #L_new = X[-1]+U[-1]*dt - X[0]-U[0]*dt
     
-    L = xL-xt # ice melange length [m]
+    U_new = velocity(U,x,X,Ut,H,W,L,dx) # ice melange velocity based on previous iteration of U [m/s]
     
-    U_new = velocity(U,x,X,Ut,H,W,dx,L) # ice melange velocity based on previous iteration of U [m/s]
+    #UL_new = np.append(U_new,L_new)
     dU = U-U_new
     
     return(dU)   

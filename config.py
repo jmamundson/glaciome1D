@@ -26,8 +26,8 @@ d = 25 # characteristic iceberg size [m]
 
 # parameters for granular fluidity rheology
 A = 1
-b = 1e7
-muS = 0.05
+b = 2e5
+muS = 0.1
 muW_ = 2*muS
 
     # constants --> Needs some thought!
