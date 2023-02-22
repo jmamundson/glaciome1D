@@ -30,8 +30,8 @@ model = importlib.import_module(rheology)
 
 #%
 
-dt = config.secsDay*10 # time step [s]
-n = 11 # number of time steps
+dt = config.secsDay*30 # time step [s]
+n = 21 # number of time steps
 
 B = -0/config.secsYear # mass balance rate [m s^-1]
 
@@ -79,13 +79,13 @@ ax1.set_xlim([0,10000])
 ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+2.25*ygap, ax_width, ax_height])
 ax2.set_xlabel('Longitudinal coordinate [m]')
 ax2.set_ylabel('Thickness [m]')
-ax2.set_ylim([-100, 100])
+ax2.set_ylim([-75, 100])
 ax2.set_xlim([0,10000])
 
 ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
 ax3.set_xlabel('Longitudinal coordinate [m]')
 ax3.set_ylabel('$\mu$')
-ax3.set_ylim([0, 1])
+ax3.set_ylim([0, 0.3])
 ax3.set_xlim([0,10000])
 
 ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
@@ -117,13 +117,13 @@ color_id = np.linspace(0,1,n)
 
 
 # plot initial time step
-ax1.plot(X,U*config.secsDay,color=plt.cm.viridis(color_id[0]))
-ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[0]))
+#ax1.plot(X,U*config.secsDay,color=plt.cm.viridis(color_id[0]))
+#ax2.plot((X[:-1]+X[1:])/2,H,color=plt.cm.viridis(color_id[0]))
 
-mu, muW = model.get_mu(x,U,H,W,X[-1]-X[0],dx)
+#mu, muW = model.get_mu(x,U,H,W,X[-1]-X[0],dx)
 
-ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[0]))
-ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[0]))
+#ax3.plot((X[:-1]+X[1:])/2,mu,color=plt.cm.viridis(color_id[0]))
+#ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[0]))
 
 # concatenate U and H since the implicit time step requires that they are
 # iteratively solved simultaneously
@@ -165,4 +165,5 @@ for k in np.arange(1,n):
     ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
     ax5.plot(np.append(y,y+y[-1]),np.append(u_transverse,u_transverse[-1::-1])*config.secsDay,color=plt.cm.viridis(color_id[k]))
 
-
+ax3.plot(np.array([0,1e4]),np.array([config.muS,config.muS]),'k:')
+ax4.plot(np.array([0,1e4]),np.array([config.muS,config.muS]),'k:')

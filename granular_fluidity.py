@@ -186,6 +186,7 @@ def calc_gg(gg,ee_chi,H,L,dx):
     #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
     
     bc = 'first-order' # specify whether boundary condition should be 'first-order' accurate or 'second-order' accurate
+    # seems to work better with first-order accuracy, but maybe there is a bug in my code?
     
     c_left = np.ones(len(mu)-1)
     c = -(2+zeta*(L*dx)**2)    
@@ -344,6 +345,7 @@ def time_step(x,dx,dt,U,U_prev,H_prev,W,L,Bdot):
     b = 1 + dt/(2*dx*L)*(U[2:]+U[1:-1])
     b[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) # check sign in front of beta!
     b = np.append(1+beta[0]*dt/(L*dx)-dt/(2*L*dx)*(U[1]+U[0]), b)
+    
     #test
     b[0] = 1 + dt/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
     
@@ -352,8 +354,17 @@ def time_step(x,dx,dt,U,U_prev,H_prev,W,L,Bdot):
     
     TT = Bdot*dt + H_prev
     
+    # attempt at setting d^2{H}/dx^2=0 
+    b[0] = 1
+    b_right[0] = -2
+    
+    
     diagonals = [b_left,b,b_right]
     DD = diags(diagonals,[-1,0,1]).toarray()
+    
+    # attempt at setting d^2{H}/dx^2=0
+    DD[0,2] = 1
+    TT[0] = 0
     
     H_new = np.linalg.solve(DD,TT)
 
