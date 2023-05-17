@@ -18,7 +18,7 @@ secsDay = 86400.
 daysYear = 365.25
 secsYear = secsDay*daysYear
 
-dee = 1e-16      # finite strain rate parameter
+#dee = 1e-16      # finite strain rate parameter
 dgg = 1e-16      # finite granular fluidity parameter
 
 d = 25 # characteristic iceberg size [m]
@@ -27,7 +27,7 @@ d = 25 # characteristic iceberg size [m]
 # parameters for granular fluidity rheology
 A = 0.5
 b = 2e5
-muS = 0.1
+muS = 0.05
 muW_ = 2*muS
 
     # constants --> Needs some thought!
