@@ -2,58 +2,201 @@ import numpy as np
 from scipy import sparse
 from scipy.optimize import fsolve
 from scipy.sparse import diags
-from scipy.optimize import minimize
 from scipy.optimize import root
-from scipy.optimize import newton_krylov
 
 import config
 
-from general_utilities import pressure
-from general_utilities import second_invariant
+#from general_utilities import pressure
+#from general_utilities import second_invariant
 
 from matplotlib import pyplot as plt
+import matplotlib
 from scipy.integrate import quad
 
 import sys
-#%%
-def diagnostic(Ugg,x,X,Ut,H,W,dx,L):
-    '''
-    Used to simultaneously calculate the velocity and the granular fluidity.
 
-    Parameters
-    ----------
-    Ugg : Array that contains the current value of U and gg.
-    x : grid, in transformed coordinate system
-    X : grid [m]
-    Ut : glacier terminus velocity [m/yr]
-    H : ice melange thickness on the staggered grid [m]
-    W : fjord width on the staggered grid [m]
-    dx : grid spacing, in transformed coordinate system
-    L : ice melange length [m]
+import pickle
+
+from general_utilities import second_invariant, width, pressure
+
+#%%
+class model:
+    '''
+    The model class contains model variables, and simplifies passing variables
+    into and out of functions.
+    '''
+    def __init__(self,n_pts,dt,L,Ut,W):
+        '''
+        Initialize class at t=0.
+
+        Parameters
+        ----------
+        n_pts : number of grid points
+        L : ice melange length [m]
+        Ut : terminus velocity [m/a]
+        W : ice melange width [m]; for now, best to treat as a constant
+        '''
+        
+        self.x = np.linspace(0,1,n_pts)
+        self.dx = self.x[1]
+        self.x_ = (self.x[:-1]+self.x[1:])/2
+        
+        self.L = L
+        self.X = self.x*L
+        self.X_ = self.x_*L
+
+        self.H = config.d*np.ones(len(self.x_))
+        self.Ut = Ut
+        self.U = self.Ut*np.exp(-self.x/0.5)
+        self.gg = 1*(1-self.x_)
+        self.W = W*np.ones(len(self.x_))
+        
+        self.dt = dt
+        self.t = 0 # current model time
+        self.B = 0 # initialize mass balance rate as 0 [m/a]
+        
+
+    def spinup(self):
+        '''
+        If a spinup.pickle file does not already exist, run this. Need to edit this
+        section of code if you want a different initial geometry.    
+    
+        Returns
+        -------
+        x  : dimensionless grid
+        x_ : dimensionless staggered grid
+        dx : dimensionless grid spacing
+        X  : grid [m]
+        X_ : staggered grid [m]
+        L  : ice melange length [m]
+        Ut : glacier terminus velocity [m a^{-1}]
+        U  : ice melange velocity [m a^{-1}]
+        gg : granular fluidity [a^{-1}]
+        B  : mass balance rate [m a^{-1}]; B<0 indicates mass loss
+        '''
+        
+        
+            
+        # alternate solving for granular fluidity and velocity in order to get a good starting point
+        print('Iterating between granular fluidity and velocity in order to find a good starting point')
+        residual = self.Ut*np.ones(self.x.shape) # just some large values for the initial residuals
+        j = 0
+        
+        while np.max(np.abs(residual))>1:
+            print('Velocity residual: ' + "{:.2f}".format(np.max(np.abs(residual))) + ' m/a')
+            #result = root(calc_gg, gg, (U,H,L,dx), method='lm')
+            result = root(calc_gg, self.gg, (self), method='lm')
+            self.gg = result.x
+            
+            result = root(calc_U, self.U, (self), method='lm')
+            U_new = result.x
+            
+            residual = self.U-U_new
+            
+            self.U = U_new
+            j += 1    
+        
+        print('Done with initial iterations. Solving diagnostic equation.')
+        
+        # now simultaneous solve for velocity and granular fluidity
+        Ugg = np.concatenate((self.U,self.gg))
+        result = root(diagnostic, Ugg, (self), method='lm', tol=1e-6)
+        self.U = result.x[:len(self.x)]
+        self.gg = result.x[len(self.x):]
+        
+        
+        file_name = 'spinup.pickle'
+        with open(file_name, 'wb') as file:
+            pickle.dump(self, file)
+            file.close()
+            print('Spin-up file successfully saved.')
+        
+        
+    def explicit(self):
+        '''
+        Use an explicit time step to determine the velocity and changes in geometry. 
+        First solves for U and gg given the current geometry, then updates the 
+        thickness and length
+
+        Parameters
+        ----------
+        x : 
+
+        Returns
+        -------
+        None.
+
+        '''
+             
+        Ugg = np.concatenate((self.U,self.gg)) # simultaneously solving for U and gg
+        result = root(diagnostic, Ugg, self, method='lm', tol=1e-6)
+        self.U = result.x[:len(self.x)]
+        self.gg = result.x[len(self.x):]
+        
+        # update the thickness; needs to account for 
+        advection_term = (self.U[0] + self.x_*(self.U[-1]-self.U[0]))*np.gradient(self.H,self.L*self.dx)
+        coordinate_stretching_term = ((self.U[2:]+self.U[1:-1])*self.H[1:]*self.W[1:]-(self.U[1:-1]+self.U[:-2])*self.H[:-1]*self.W[:-1])/(2*self.L*self.dx*self.W[1:])
+        coordinate_stretching_term = np.append(2*coordinate_stretching_term[0]-coordinate_stretching_term[1],coordinate_stretching_term) # a bit of a hack
+        dHdt = self.B + advection_term - coordinate_stretching_term
+        self.H += dHdt*self.dt
+        
+        self.L += (self.U[-1]-self.U[0])*self.dt
+        self.X = self.x*self.L
+        self.X_ = (self.X[:-1]+self.X[1:])/2
+        
+        self.t += self.dt
+       
+    
+    
+    def implicit(self):
+        '''
+        
+
+        Returns
+        -------
+        None.
+
+        '''
+        H_prev = self.H
+        L_prev = self.L
+        
+        UggHL = np.concatenate((self.U,self.gg,self.H,[self.L]))
+        result = root(solve_implicit, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-6)
+        self.U = result.x[:len(self.x)]
+        self.gg = result.x[len(self.x):2*len(self.x)-1]
+        self.H = result.x[2*len(self.x)-1:-1]
+        self.L = result.x[-1]
+        
+        
+        # kind of clunky, but need to use old values while also updating the new values... of the model object
+        
+def solve_implicit(UggHL, data, H_prev, L_prev):
+    '''
+    
 
     Returns
     -------
-    res : residual of differential equations
+    None.
 
     '''
-    
-    # extract current values of U and gg
-    U = Ugg[:len(x)]
-    gg = Ugg[len(x):]
-    
-    # compute new values of U and gg and determine residual between new and old
-    # values
-    
-    resU = calc_U(U, gg, x, X, Ut, H, W, dx, L)
-    resgg = calc_gg(gg, U, H, L, dx) #*L multiply by L to give it similar scale to resU...?
-    
-    # combine the residuals into one array; this is the array that is being
-    # minimized
-    res = np.concatenate((resU,resgg))
-    
-    
-    return(res)
+    data.U = UggHL[:len(data.x)]
+    data.gg = UggHL[len(data.x):2*len(data.x)-1]
+    data.H = UggHL[2*len(data.x)-1:-1]
+    data.L = UggHL[-1]
 
+    
+    resU = calc_U(data.U, data)
+    resgg = calc_gg(data.gg, data)
+    resH = calc_H(data.H, data, H_prev)
+    resL = (data.L-L_prev)/data.dt + data.U[0] - data.U[-1]
+    
+    # append residuals
+    resUggHL = np.concatenate((resU, resgg, resH, [resL]))    
+    
+    
+    return(resUggHL)
+
+        
 #%%
 def implicit(UggHL,x,X,Ut,H,W,dx,dt,U_prev,H_prev,L_prev,B):
     '''
@@ -90,7 +233,7 @@ def implicit(UggHL,x,X,Ut,H,W,dx,dt,U_prev,H_prev,L_prev,B):
     resgg = calc_gg(gg, U, H, L, dx)
     resH = calc_H(H, x, dx, dt, U, U_prev, H_prev, W, L, B)
     resL = (L-L_prev)/dt + U[0] - U[-1]
-    resL = resL/L
+    #resL = resL/L
     
     # append residuals
     resUggHL = np.concatenate((resU, resgg, resH, [resL]))    
@@ -103,7 +246,48 @@ def implicit(UggHL,x,X,Ut,H,W,dx,dt,U_prev,H_prev,L_prev,B):
 
 
 #%%
-def calc_U(U,gg,x,X,Ut,H,W,dx,L):
+def diagnostic(Ugg,data):
+    '''
+    Used to simultaneously calculate the velocity and the granular fluidity.
+
+    Parameters
+    ----------
+    Ugg : Array that contains the current value of U and gg.
+    x : grid, in transformed coordinate system
+    X : grid [m]
+    Ut : glacier terminus velocity [m/yr]
+    H : ice melange thickness on the staggered grid [m]
+    W : fjord width on the staggered grid [m]
+    dx : grid spacing, in transformed coordinate system
+    L : ice melange length [m]
+
+    Returns
+    -------
+    res : residual of differential equations
+
+    '''
+    
+        
+    # extract current values of U and gg
+    data.U = Ugg[:len(data.x)]
+    data.gg = Ugg[len(data.x):]
+    
+    # compute new values of U and gg and determine residual between new and old
+    # values
+    
+    resU = calc_U(data.U, data)
+    resgg = calc_gg(data.gg, data) 
+    
+    # combine the residuals into one array; this is the array that is being
+    # minimized
+    res = np.concatenate((resU,resgg))
+        
+    return(res)
+
+
+
+#%%
+def calc_U(U, data):
     '''
     Calculates the longitudinal velocity profile, which depends on the current
     velocity and ice thickness. The velocity must therefore be calculated
@@ -129,9 +313,16 @@ def calc_U(U,gg,x,X,Ut,H,W,dx,L):
 
     '''
     
-    nu = H**2/gg # for simplicity, later
-    #nu = (H-config.d)**2/gg # for simplicity, later
+    H = data.H
+    gg = data.gg
+    W = data.W
+    dx = data.dx
+    L = data.L
+    Ut = data.Ut
     
+    
+    nu = H**2/gg # for simplicity, later
+        
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
     # note that these start at the second grid point
     H_ = (H[:-1]+H[1:])/2 # thickness on the grid, excluding the first and last grid points
@@ -162,7 +353,6 @@ def calc_U(U,gg,x,X,Ut,H,W,dx,L):
     T = np.append(Ut/(dx*L),T)
     
     # downstream boundary condition??
-    #T = np.append(T,0.5*gg[-1]*(H[-1]-config.d)/H[-1])
     T = np.append(T,0.5*gg[-1])
     
     res = np.matmul(D,U)-T
@@ -182,7 +372,7 @@ def calc_df(mu,muS,k):
     
     return(df_)
 
-def calc_gg(gg,U,H,L,dx):
+def calc_gg(gg, data):
     '''
     Calculates the granular fluidity for the 1D flow model. Longitudinal and 
     transverse strain rates have been de-coupled. calc_gg only determines gg
@@ -201,6 +391,11 @@ def calc_gg(gg,U,H,L,dx):
     res : residual of the granular fluidity differential equation
     
     '''
+    
+    U = data.U
+    H = data.H
+    L = data.L
+    dx = data.dx
     
     # calculate current values of ee_chi, mu, g_loc, and zeta
     
@@ -317,7 +512,7 @@ def calc_muW(muW, H, W, U):
     return(du)
 
 #%%    
-def calc_H(H,x,dx,dt,U,U_prev,H_prev,W,L,Bdot):    
+def calc_H(H, data, H_prev):    
     '''
     Calculates the ice melange thickness profile, using an implicit time step. 
     The thickness depends on the current velocity as well as the velocity and
@@ -342,12 +537,16 @@ def calc_H(H,x,dx,dt,U,U_prev,H_prev,W,L,Bdot):
     until H_new= H
 
     '''
+    x = data.x
+    x_ = data.x_
+    dx = data.dx
+    dt = data.dt
+    W = data.W
+    L = data.L
+    U = data.U
+    B = data.B
     
-    xs = (x[:-1]+x[1:])/2 # staggered grid in the transformed coordinate system
-    
-    # is this expression for beta wrong???
-    #beta = U[0]+xs*(U[-1]-U[0]-U_prev[-1]+U_prev[0])
-    beta = U[0]+xs*(U[-1]-U[0])
+    beta = U[0]+x_*(U[-1]-U[0])
           
                              
     a_left = dt/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
@@ -362,7 +561,7 @@ def calc_H(H,x,dx,dt,U,U_prev,H_prev,W,L,Bdot):
     a_right = -dt/(2*dx*L)*beta[1:]
     a_right[0] = dt/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
     
-    T = Bdot*dt + H_prev
+    T = B*dt + H_prev
     
     # attempt at setting d^2{H}/dx^2=0 
     a[0] = 1
@@ -520,3 +719,101 @@ def get_muW(x,U,H,W,L,dx):
     return(muW)
 
 #%%
+def basic_figure(n,dt):
+    '''
+    Sets up the basic figure for plotting. 
+
+    Returns
+    -------
+    axes handles ax1, ax2, ax3, ax4, ax5, and ax_cbar for the 5 axes and colorbar
+    '''
+    
+    color_id = np.linspace(0,1,n)
+
+    fig_width = 12
+    fig_height = 6.5
+    plt.figure(figsize=(fig_width,fig_height))
+    
+    ax_width = 3/fig_width
+    ax_height = 2/fig_height
+    left = 1/fig_width
+    bot = 0.5/fig_height
+    ygap = 0.75/fig_height
+    xgap= 1/fig_width
+    
+    
+    xmax = 15000
+    vmax = 50
+    
+    ax1 = plt.axes([left, bot+ax_height+2.25*ygap, ax_width, ax_height])
+    ax1.set_xlabel('Longitudinal coordinate [m]')
+    ax1.set_ylabel('Speed [m/d]')
+    ax1.set_ylim([0,50])
+    ax1.set_xlim([0,xmax])
+    
+    ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+2.25*ygap, ax_width, ax_height])
+    ax2.set_xlabel('Longitudinal coordinate [m]')
+    ax2.set_ylabel('Elevation [m]')
+    ax2.set_ylim([-75, 100])
+    ax2.set_xlim([0,xmax])
+    
+    ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
+    ax3.set_xlabel('Longitudinal coordinate [m]')
+    ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
+    ax3.set_ylim([0, 20])
+    ax3.set_xlim([0,xmax])
+    
+    ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
+    ax4.set_xlabel('Longitudinal coordinate [m]')
+    ax4.set_ylabel('$\mu_w$')
+    ax4.set_ylim([0, 3])
+    ax4.set_xlim([0,xmax])
+    
+    ax5 = plt.axes([left+2*(ax_width+xgap), bot+1.25*ygap, 0.75*ax_width, 2*ax_height+ygap])
+    ax5.set_xlabel('Transverse coordinate [m]')
+    ax5.set_ylabel(r'Speed at $\chi=0.5$ [m/d]')
+    ax5.set_xlim([0,4000])
+    ax5.set_ylim([0,vmax])
+    
+    ax_cbar = plt.axes([left, bot, 2*(ax_width+xgap)+0.75*ax_width, ax_height/15])
+    
+    cbar_ticks = np.linspace(0, (n-1)*dt, 11, endpoint=True)
+    cmap = matplotlib.cm.viridis
+    bounds = cbar_ticks
+    norm = matplotlib.colors.Normalize(vmin=0, vmax=(n-1)*dt)
+    cb = matplotlib.colorbar.ColorbarBase(ax_cbar, cmap=cmap, norm=norm,
+                                    orientation='horizontal')#,extend='min')
+    cb.set_label("Time [a]")
+
+    axes = (ax1, ax2, ax3, ax4, ax5, ax_cbar)
+    
+    return(axes, color_id)
+
+#%%
+def plot_basic_figure(data, axes, color_id, k):
+    
+    x = data.x
+    dx = data.dx
+    X = data.X
+    X_ = data.X_
+    U = data.U
+    H = data.H
+    W = data.W
+    L = data.L
+    gg = data.gg
+    
+    muW = get_muW(x,U,H,W,L,dx)
+    
+    W = width(X_)
+    
+    ind = int(len(W)/2) # index of midpoint in fjord
+    y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind])    
+
+    ax1, ax2, ax3, ax4, ax5, ax_cbar = axes
+    ax1.plot(X,U/config.daysYear,color=plt.cm.viridis(color_id[k]))
+    ax2.plot(np.append(X_,X_[::-1]),np.append(-config.rho/config.rho_w*H,(1-config.rho/config.rho_w)*H[::-1]),color=plt.cm.viridis(color_id[k]))
+    ax3.plot(X_,gg,color=plt.cm.viridis(color_id[k]))
+    ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
+    ax5.plot(np.append(y,y+y[-1]),np.append(u_transverse,u_transverse[-1::-1])/config.daysYear,color=plt.cm.viridis(color_id[k]))
+
+

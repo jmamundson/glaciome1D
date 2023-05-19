@@ -14,7 +14,12 @@ from scipy.sparse import diags
 import config
 
 from matplotlib import pyplot as plt
+import matplotlib
 
+import importlib
+# here you should specify the rheology that should be imported
+#rheology = 'granular_fluidity'
+#model = importlib.import_module(rheology)
 
 
 
@@ -95,4 +100,5 @@ def width(X):
     return(W)
     
 
-
+#%% set up figure and plot initial conditions
+# 

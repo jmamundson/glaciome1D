@@ -28,8 +28,5 @@ d = 25 # characteristic iceberg size [m]
 A = 0.5
 b = 2e5
 muS = 0.05
-muW_ = 2*muS
+muW_ = 2*muS # guess for muW iterations
 
-    # constants --> Needs some thought!
-    #b = (mu0-muS)/I0
-    #A = 0.5
