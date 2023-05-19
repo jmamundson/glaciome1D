@@ -6,9 +6,6 @@ from scipy.optimize import root
 
 import config
 
-#from general_utilities import pressure
-#from general_utilities import second_invariant
-
 from matplotlib import pyplot as plt
 import matplotlib
 from scipy.integrate import quad
@@ -37,23 +34,33 @@ class model:
         W : ice melange width [m]; for now, best to treat as a constant
         '''
         
+        # unitless grid and staggered grid
         self.x = np.linspace(0,1,n_pts)
         self.dx = self.x[1]
         self.x_ = (self.x[:-1]+self.x[1:])/2
         
+        # grid and staggered grid [m]
         self.L = L
         self.X = self.x*L
         self.X_ = self.x_*L
 
+        # initial thickness (constant), velocity (exponentially decaying), and
+        # granular fluidity (linearly decreasing)
         self.H = config.d*np.ones(len(self.x_))
         self.Ut = Ut
         self.U = self.Ut*np.exp(-self.x/0.5)
         self.gg = 1*(1-self.x_)
-        self.W = W*np.ones(len(self.x_))
+        self.muW = config.muW_*np.ones(len(self.H)-1)
         
+        
+        # set initial values for width and mass balance
+        self.W = W*np.ones(len(self.x_))
+        self.B = 0 # initialize mass balance rate as 0 [m/a]
+        
+        # time step and initial time
         self.dt = dt
         self.t = 0 # current model time
-        self.B = 0 # initialize mass balance rate as 0 [m/a]
+        
         
 
     def spinup(self):
@@ -104,6 +111,7 @@ class model:
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):]
         
+        self.update_muW() 
         
         file_name = 'spinup.pickle'
         with open(file_name, 'wb') as file:
@@ -111,7 +119,7 @@ class model:
             file.close()
             print('Spin-up file successfully saved.')
         
-        
+    
     def explicit(self):
         '''
         Use an explicit time step to determine the velocity and changes in geometry. 
@@ -146,6 +154,7 @@ class model:
         
         self.t += self.dt
        
+        self.update_muW()
     
     
     def implicit(self):
@@ -167,9 +176,16 @@ class model:
         self.H = result.x[2*len(self.x)-1:-1]
         self.L = result.x[-1]
         
-        
-        # kind of clunky, but need to use old values while also updating the new values... of the model object
-        
+        self.update_muW()
+          
+    def update_muW(self):
+        # compute muW on the grid (except first and last grid points)
+        H_ = (self.H[:-1]+self.H[1:])/2
+        W_ = (self.W[:-1]+self.W[1:])/2
+        for k in range(len(self.H)-1):
+            self.muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],self.U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
+              
+#%%          
 def solve_implicit(UggHL, data, H_prev, L_prev):
     '''
     
@@ -197,53 +213,6 @@ def solve_implicit(UggHL, data, H_prev, L_prev):
     return(resUggHL)
 
         
-#%%
-def implicit(UggHL,x,X,Ut,H,W,dx,dt,U_prev,H_prev,L_prev,B):
-    '''
-    Used to simultaneously calculate the velocity and the granular fluidity.
-
-    Parameters
-    ----------
-    Ugg : Array that contains the current value of U and gg.
-    x : grid, in transformed coordinate system
-    X : grid [m]
-    Ut : glacier terminus velocity [m/yr]
-    H : ice melange thickness on the staggered grid [m]
-    W : fjord width on the staggered grid [m]
-    dx : grid spacing, in transformed coordinate system
-    L : ice melange length [m]
-
-    Returns
-    -------
-    res : difference between current and new values of velocity and granular 
-    fluidity
-
-    '''
-    
-    # combine the residuals into one array; this is the array that is being
-    # minimized
-    
-    U = UggHL[:len(x)]
-    gg = UggHL[len(x):2*len(x)-1]
-    H = UggHL[2*len(x)-1:-1]
-    L = UggHL[-1]
-    
-    # residuals for velocity, granular fluidity, thickness, and length
-    resU = calc_U(U, gg, x, X, Ut, H, W, dx, L)
-    resgg = calc_gg(gg, U, H, L, dx)
-    resH = calc_H(H, x, dx, dt, U, U_prev, H_prev, W, L, B)
-    resL = (L-L_prev)/dt + U[0] - U[-1]
-    #resL = resL/L
-    
-    # append residuals
-    resUggHL = np.concatenate((resU, resgg, resH, [resL]))    
-    
-    
-    #print('max res: ' + str(np.max(np.abs(resUggHL))))
-    
-    return(resUggHL)
-
-
 
 #%%
 def diagnostic(Ugg,data):
@@ -319,7 +288,7 @@ def calc_U(U, data):
     dx = data.dx
     L = data.L
     Ut = data.Ut
-    
+    muW = data.muW
     
     nu = H**2/gg # for simplicity, later
         
@@ -328,8 +297,7 @@ def calc_U(U, data):
     H_ = (H[:-1]+H[1:])/2 # thickness on the grid, excluding the first and last grid points
     W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
     
-    muW = config.muW_*np.ones(H_.shape) # construct initial array for muW on the grid points
-        
+    
     ## THIS FOR LOOP CAN BE PARALELLIZED
     # calculate muW given the current velocity profile
     for k in range(len(H_)):
@@ -352,7 +320,7 @@ def calc_U(U, data):
     # upstream boundary condition; for now just set equal to terminus velocity; doesn't account for calving
     T = np.append(Ut/(dx*L),T)
     
-    # downstream boundary condition??
+    # downstream boundary condition
     T = np.append(T,0.5*gg[-1])
     
     res = np.matmul(D,U)-T
@@ -369,7 +337,6 @@ def logistic(x,xc,k):
 def calc_df(mu,muS,k):
     df = muS/np.max([mu,muS])**2 # theoretical df/d(mu)
     df_ = df + (logistic(mu,muS,k)-1)/muS # modified df/d(mu)
-    
     return(df_)
 
 def calc_gg(gg, data):
@@ -407,16 +374,11 @@ def calc_gg(gg, data):
     mu = np.abs(mu)
     if np.min(mu)<0:
         sys.exit('mu less than 0!')
-    # Equation 18 in Amundson and Burton (2018)
-
-
-##################
+    
+    # Calculate g_loc using a regularization that approximates the next two lines.
+    # g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
+    # g_loc[g_loc<0] = 0
     k = 50 # smoothing factor (small number equals more smoothing?)
-
-    #f = np.zeros(mu.shape)
-
-    #for j in np.arange(0,len(mu)):
-    #    f[j],_ = quad(calc_df,1e-3,mu[j],args=(config.muS,k))
    
     f = [quad(calc_df,1e-4,x,args=(config.muS,k))[0] for x in mu] 
     f = np.abs(f)
@@ -424,12 +386,9 @@ def calc_gg(gg, data):
         sys.exit('g_loc less than 0!')
     
     g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
-    
-###################
-    #g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
-    #g_loc[g_loc<0] = 0
-    
-    # approximation of abs(mu-muS)
+ 
+
+    # Regularization of abs(mu-muS)
     f_mu = 2/k*np.log(1+np.exp(k*(mu-config.muS)))-mu+config.muS-2/k*np.log(1+np.exp(-k*config.muS))
 
     zeta = f_mu/(config.A**2*config.d**2)
@@ -668,56 +627,6 @@ def transverse(W,muW,H):
     
     return(y,u,u_mean)
 
-
-
-#%%
-def get_muW(x,U,H,W,L,dx):
-    '''
-    After determining the velocity profile with fsolve, go back and retrieve
-    the effective coefficients of friction.
-
-    Parameters
-    ----------
-    x : longitudinal coordinate [m]
-    U : initial guess of the width-averaged velocity [m s^-1]
-    H : ice melange thickness [m]
-    W : fjord width [m]
-    dx : grid spacing [m]
-
-    Returns
-    -------
-    mu : effective coefficient of friction
-    muW : effective coefficient of friction along the fjord walls
-
-    '''
-    
-    # ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
-    # # transformed coordinate system
-    
-    # gg = config.secsYear*1e-7*np.ones(len(x)-1) # initial guess for the granular fluidity
-    
-    # result = root(calc_gg, gg, (ee_chi,H,L,dx), method='hybr', tol=1e-6)
-    # gg = result.x
-    # #gg = fsolve(calc_gg, gg, (ee_chi,H,L,dx))
-    
-    
-    # mu = (ee_chi/L)/gg
-    
-    H_ = (H[:-1]+H[1:])/2
-    W_ = (W[:-1]+W[1:])/2
-    muW = config.muW_*np.ones(H_.shape)
-    
-    # calculate mu_w given the current velocity profile
-    for k in range(len(H_)):
-        result = root(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]), method='lm', options={'xtol':1e-6})
-        muW[k] = result.x
-        #result = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1]))
-        #muW[k] = result
-        #muW[k] = result.x
-        
-        
-    return(muW)
-
 #%%
 def basic_figure(n,dt):
     '''
@@ -792,19 +701,15 @@ def basic_figure(n,dt):
 #%%
 def plot_basic_figure(data, axes, color_id, k):
     
-    x = data.x
-    dx = data.dx
     X = data.X
     X_ = data.X_
     U = data.U
     H = data.H
     W = data.W
-    L = data.L
     gg = data.gg
-    
-    muW = get_muW(x,U,H,W,L,dx)
-    
-    W = width(X_)
+    muW = data.muW
+    W = data.W
+
     
     ind = int(len(W)/2) # index of midpoint in fjord
     y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind])    
