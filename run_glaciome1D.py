@@ -18,17 +18,23 @@ import pickle
 
 
 # COMMENTS
-# 1. currently only able to handle constant width
-# 2. dH/dt upstream boundary condition
-# 3. calving of ice from melange
+# 1. Currently only able to handle constant width
+# 2. Need to work on incorporating calving of new icebergs into the melange and
+# "calving" of ice from the end of the melange
+# 3. No attempt to limit deformation below some critical thickness
+# 4. Currently assumes no slip along the fjord walls
+# 5. Have not yet included functionality for spatially variable melt rates
+# 6. Have not yet included any parameterization of drag from the water
 
 
 #%%
+# basic parameters needed for setting up the model; later will modify this so that 
+# the fjord geometry can be passed through
+
 n_pts = 11 # number of grid points
 L = 1e4 # ice melange length
 Ut = 1e4 # glacier terminus velocity [m/a]; treated as a constant
-W = 4000 # ice melange width [m], treated as a constant
-n = 101 # number of time steps
+n = 51 # number of time steps
 dt = 0.01 # time step [a]; needs to be quite small for this to work
 
 
@@ -41,7 +47,7 @@ if os.path.exists('spinup.pickle'):
     data.dt = dt # update the time step size in the data model in case it has changed
 else:
     print('Running model spin-up.')
-    data = model(n_pts, dt, L, Ut, W)
+    data = model(n_pts, dt, L, Ut)
     data.spinup()
 
 # set up basic figure
@@ -52,22 +58,17 @@ plot_basic_figure(data, axes, color_id, 0)
 
 
 
-
-
-#%% start prognostic simulations
-Ugg = np.concatenate((data.U,data.gg))
+# run prognostic simulations
 
 for k in np.arange(1,n):
     print('Time: ' + "{:.2f}".format(k*dt) + ' years')     
     
     # choose between explicit or implicit time steps
-    data.explicit() 
-    #data.implicit()
+    # data.explicit() 
+    data.implicit()
     
-    if (k % 10) == 0:        
+    if (k % 1) == 0:        
         plot_basic_figure(data, axes, color_id, k)
-            
+          
+    # data.save(k)
            
-
-
-#plt.savefig('test.png',format='png',dpi=150)    
