@@ -20,7 +20,7 @@ import pickle
 import os
 
 #%%
-class model:
+class glaciome:
     '''
     The model class contains model variables, which simplifies passing variables
     into and out of functions, and methods for model spinup and implicit and 
@@ -570,16 +570,13 @@ def calc_H(H, data, H_prev):
     
     T = B*dt + H_prev
     
-    # It's not clear how to treat the upstream boundary using the upwind scheme.
-    # Here, the curvature of the thickness profile is treated as a constant across
-    # the first few grid points (d^2{H}/dx^2=0) 
-    a[0] = 1
-    a_right[0] = -2
     
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray()
     
-    # attempt at setting d^2{H}/dx^2=0
+    # set d^2{H}/dx^2=0 across the first three grid points (to deal with upwind scheme)
+    D[0,0] = 1
+    D[0,1] = -2
     D[0,2] = 1
     T[0] = 0
     

@@ -2,7 +2,7 @@ import numpy as np
 
 import os
 
-from glaciome1D import model, basic_figure, plot_basic_figure
+from glaciome1D import glaciome, basic_figure, plot_basic_figure
 
 import pickle
 
@@ -47,7 +47,7 @@ if os.path.exists('spinup.pickle'):
     data.dt = dt # update the time step size in the data model in case it has changed
 else:
     print('Running model spin-up.')
-    data = model(n_pts, dt, L, Ut)
+    data = glaciome(n_pts, dt, L, Ut)
     data.spinup()
 
 # set up basic figure
