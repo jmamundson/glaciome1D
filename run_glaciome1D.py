@@ -33,10 +33,11 @@ import pickle
 
 n_pts = 11 # number of grid points
 L = 1e4 # ice melange length
-Ut = 1e4 # glacier terminus velocity [m/a]; treated as a constant
-n = 51 # number of time steps
-dt = 0.01 # time step [a]; needs to be quite small for this to work
-
+Ut = 0.5e4 # glacier terminus velocity [m/a]; treated as a constant
+Uc = 0.5e4 # glacier calving rate [m/a]; treated as a constant
+Ht = 500 # terminus thickness
+n = 11 # number of time steps
+dt = 0.1 # time step [a]; needs to be quite small for this to work
 
 # Load spin-up or run spin-up if it hasn't already been done
 if os.path.exists('spinup.pickle'):
@@ -47,7 +48,10 @@ if os.path.exists('spinup.pickle'):
     data.dt = dt # update the time step size in the data model in case it has changed
 else:
     print('Running model spin-up.')
-    data = glaciome(n_pts, dt, L, Ut)
+    data = glaciome(n_pts, dt, L, Ut, Uc, Ht)
+    # default is to assume no deformation below the grain scale
+    # set data.subgrain_deformation = 'y' if you want to change this    
+    data.subgrain_deformation = 'y'
     data.spinup()
 
 # set up basic figure
@@ -61,11 +65,12 @@ plot_basic_figure(data, axes, color_id, 0)
 # run prognostic simulations
 
 for k in np.arange(1,n):
-    print('Time: ' + "{:.2f}".format(k*dt) + ' years')     
+    print('Time: ' + "{:.3f}".format(k*dt) + ' years')     
     
     # choose between explicit or implicit time steps
     # data.explicit() 
-    data.implicit()
+    data.prognostic()
+    #data.regrid()
     
     if (k % 1) == 0:        
         plot_basic_figure(data, axes, color_id, k)

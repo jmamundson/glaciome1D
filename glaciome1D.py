@@ -27,7 +27,7 @@ class glaciome:
     explicit time steps.
     '''
     
-    def __init__(self, n_pts, dt, L, Ut):
+    def __init__(self, n_pts, dt, L, Ut, Uc, Ht):
         '''
         Initialize an object at t=0.
 
@@ -36,6 +36,8 @@ class glaciome:
         n_pts : number of grid points
         L : ice melange length [m]
         Ut : terminus velocity [m/a]
+        Uc : calving rate [m/a]
+        Ht = terminus thickness
         W : ice melange width [m]; for now, best to treat as a constant
         '''
         
@@ -51,9 +53,13 @@ class glaciome:
 
         # initial thickness (constant), velocity (exponentially decaying), and
         # granular fluidity (linearly decreasing)
-        self.H = config.d*np.ones(len(self.x_))
+        self.H = config.d + config.d*(1-self.x_)#1.1*config.d*np.ones(len(self.x_))#
+        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+        self.Ht = Ht
         self.Ut = Ut
-        self.U = self.Ut*np.exp(-self.x/0.5)
+        self.Uc = Uc
+        self.U0 = self.Ut + self.Uc*(self.Ht/self.H0-1)
+        self.U = self.U0*np.exp(-self.x/0.5)
         self.gg = 1*(1-self.x_)
         self.muW = config.muW_*np.ones(len(self.H)-1)
         
@@ -66,18 +72,18 @@ class glaciome:
         self.dt = dt
         self.t = 0 # current model time
         
-        
+        self.subgrain_deformation = 'n'
 
     def spinup(self):
         '''
-        Run this if a spinup.pickle file does not already exist. Requires a model
-        object to have already been created.
+        Run this if a spinup.pickle file does not already exist. Requires a 
+        glaciome object to have already been created.
         
         Spinup ultimately involves just solving the diagnostic equations for a
-        given geometry. In order to the determine a good starting point for 
-        solving the diagnostic equations, the code first alternates between 
-        solving for the granular fluidity and solving for the velocity. After
-        some convergence, it then solves for both of them simultaneously.
+        given geometry. In order to determine a good starting point for solving
+        the diagnostic equations, the code first alternates between solving for 
+        the granular fluidity and solving for the velocity. After some 
+        convergence, it then solves for both of them simultaneously.
         '''
         
     
@@ -98,11 +104,11 @@ class glaciome:
             residual = self.U-U_new
             self.U = U_new
         
-        print('Done with initial iterations. Solving diagnostic equation.')
+        print('Done with initial iterations. Solving diagnostic equations.')
         
         # now simultaneous solve for velocity and granular fluidity
         Ugg = np.concatenate((self.U,self.gg))
-        result = root(diagnostic, Ugg, (self), method='lm', tol=1e-6)
+        result = root(diagnostic, Ugg, (self), method='lm')
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):]
         
@@ -115,48 +121,9 @@ class glaciome:
         with open(file_name, 'wb') as file:
             pickle.dump(self, file)
             file.close()
-            print('Spin-up file successfully saved.')
-        
+            print('Spin-up file successfully saved.')    
     
-    def explicit(self):
-        '''
-        Use an explicit time step to determine the velocity and changes in geometry. 
-        First solves for U and gg given the current geometry, then updates the 
-        thickness and length.
-        '''
-             
-        # Solve the diagnostic equations for U and gg; first combine into
-        # single variable.
-        Ugg = np.concatenate((self.U,self.gg))
-        result = root(diagnostic, Ugg, self, method='lm', tol=1e-6)
-        self.U = result.x[:len(self.x)]
-        self.gg = result.x[len(self.x):]
-        
-        # Update the thickness at each grid point, accounting for advection
-        # and coordinate stretching. See Schoof, 2007.
-        advection_term = (self.U[0] + self.x_*(self.U[-1]-self.U[0]))*np.gradient(self.H,self.L*self.dx)
-        coordinate_stretching_term = ((self.U[2:]+self.U[1:-1])*self.H[1:]*self.W[1:]-(self.U[1:-1]+self.U[:-2])*self.H[:-1]*self.W[:-1])/(2*self.L*self.dx*self.W[1:])
-        coordinate_stretching_term = np.append(2*coordinate_stretching_term[0]-coordinate_stretching_term[1],coordinate_stretching_term) # a bit of a hack
-        dHdt = self.B + advection_term - coordinate_stretching_term
-        self.H += dHdt*self.dt
-        
-        # Update the length using the velocities at at the end of the melange.
-        self.L += (self.U[-1]-self.U[0])*self.dt
-        
-        # Update the dimensional grid relative the upstream boundary of the
-        # melange. Later this should be changed to allow for advection through 
-        # a complex fjord geometry.
-        self.X = self.x*self.L
-        self.X_ = (self.X[:-1]+self.X[1:])/2
-        
-        # Update the coefficient of friction along the fjord walls.
-        self.update_muW()
-        
-        # Update the time stored within the model object.
-        self.t += self.dt
-       
-    
-    def implicit(self):
+    def prognostic(self):
         '''
         Use an implicit time step to determine the velocity, granular fluidity, 
         thickness, and length.
@@ -167,7 +134,12 @@ class glaciome:
         L_prev = self.L
         
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L]))
-        result = root(solve_implicit, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-6)
+        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-9, options={'maxiter':int(1e6)})
+        print('result status: ' + str(result.status))
+        print('result success: ' + str(result.success))
+        print('result message: ' + str(result.message))
+        
+        
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):2*len(self.x)-1]
         self.H = result.x[2*len(self.x)-1:-1]
@@ -185,6 +157,26 @@ class glaciome:
         # Update the time stored within the model object.
         self.t += self.dt
          
+    def regrid(self):
+        
+        ind = np.where(self.H-config.Hc<0)[0] 
+        if len(ind)!=0:
+            find_Lnew = interp1d(self.H[:ind[0]+1]-config.Hc, self.x_[:ind[0]+1]*self.L)
+            Lnew = find_Lnew(0)
+            Xnew = self.x*Lnew
+            X_new = self.x_*Lnew
+            
+            self.U = interp1d(self.X,self.U,fill_value='extrapolate')(Xnew)
+            self.H = interp1d(self.X_,self.H,fill_value='extrapolate')(X_new)
+            self.gg = interp1d(self.X_,self.gg,fill_value='extrapolate')(X_new)
+            self.muW = interp1d(self.X[1:-1],self.muW,fill_value='extrapolate')(Xnew[1:-1])
+            
+            self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+            
+            self.X = Xnew
+            self.X_ = X_new
+            # need to add code for updating W
+            
         
     def update_muW(self):
         '''
@@ -198,7 +190,8 @@ class glaciome:
         W_ = (self.W[:-1]+self.W[1:])/2
         for k in range(len(self.H)-1):
             self.muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],self.U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
-          
+            self.muW[k] = np.min((self.muW[k], config.muW_max))
+            
     def update_width(self):  
         '''
         Update the melange width by interpolating the fjord walls at the grid
@@ -206,8 +199,6 @@ class glaciome:
         '''       
         
         self.W = 4000*np.ones(len(self.X_))
-          
-          
           
     def save(self,k):
         '''
@@ -224,7 +215,7 @@ class glaciome:
     
     
 #%%          
-def solve_implicit(UggHL, data, H_prev, L_prev):
+def solve_prognostic(UggHL, data, H_prev, L_prev):
     '''
     Computes the residual for the velocity, granular fluidity, thickness, and
     length differential equations. The residual is minimized in model.implicit.
@@ -234,25 +225,44 @@ def solve_implicit(UggHL, data, H_prev, L_prev):
     data.U = UggHL[:len(data.x)]
     data.gg = UggHL[len(data.x):2*len(data.x)-1]
     data.H = UggHL[2*len(data.x)-1:-1]
+    data.H0 = 1.5*data.H[0]-0.5*data.H[1]
+    data.U0 = data.Ut + data.Uc*(data.Ht/data.H0-1)
     data.L = UggHL[-1]
 
-    # calculate residuals
-    resU = calc_U(data.U, data)
-    resgg = calc_gg(data.gg, data)
-    resH = calc_H(data.H, data, H_prev)
+
+    Hscale = 100
+    Lscale = 1e4
+    Uscale = 0.5e4
+    Tscale = Lscale/Uscale
+
+    resU = calc_U(data.U, data) * (Lscale/(Uscale*Hscale**2*Tscale))
+    resgg = calc_gg(data.gg, data) * Tscale**2
+    resH = calc_H(data.H, data, H_prev) * Tscale/Hscale
+
+    # this works, but doesn't allow for calving from the end of the melange
+    resL = ((data.L-L_prev)/data.dt + data.Ut - data.Uc - data.U[-1]) * Tscale/Lscale
     
-    # attempt at accounting for calving from the end of the melange; not working!
-    # find where thickness first drops below the threshold 
-    # H_c = 20   
-    # ind = np.where(data.H<H_c)[0]
+
+
+    # ##### implementing something similar to Christian et al.
+    # HL = 1.5*H_prev[-1]-0.5*H_prev[-2] # thickness at end of melange
+    
+    # # # find where melange crosses critical thickness
+    # ind = np.where(H_prev-config.Hc<0)[0] 
     # if len(ind)!=0:
-    #     H_interp = interp1d(data.H[:ind[0]+1],data.X_[:ind[0]+1])
-    #     X_new = H_interp(H_c)
-    #     U_c = data.U[-1] - (X_new-L_prev)/data.dt
+    #     find_xc = interp1d(H_prev[:ind[0]+1]-config.Hc, data.x_[:ind[0]+1])
+    #     xc = find_xc(0)
+    #     dXLdt = -data.L*(1-xc)/data.dt
+    #     #Qf = (HL+H_prev[-1])/2*dXLdt
     # else:
-    #     U_c = 0
+    #     dXLdt = data.U[-1]
+    #     #Qf = 0
     
-    resL = (data.L-L_prev)/data.dt + data.U[0] - data.U[-1] #+ U_c
+    
+    # resL = (data.L-L_prev)/data.dt + data.Ut - data.Uc - dXLdt
+
+    
+
     
     # append residuals into single variable to minimized
     resUggHL = np.concatenate((resU, resgg, resH, [resL]))    
@@ -317,10 +327,15 @@ def calc_U(U, data):
     W = data.W
     dx = data.dx
     L = data.L
-    Ut = data.Ut
     muW = data.muW
+    U0 = data.U0
     
     nu = H**2/gg # for simplicity, later
+    
+    if data.subgrain_deformation=='n':
+        # function for forcing the strain rate to go to zero for thin ice melange
+        f = 1-logistic(config.d/H,0.9,100)
+        nu = nu/f     
         
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
     # note that these start at the second grid point
@@ -332,6 +347,7 @@ def calc_U(U, data):
     # calculate muW given the current velocity profile
     for k in range(len(H_)):
         muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
+        muW[k] = np.min((muW[k],config.muW_max))
         
     a_left = nu[:-1]/(dx*L)**2    
     a_left = np.append(a_left,-1/(dx*L))
@@ -347,12 +363,18 @@ def calc_U(U, data):
     
     T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1])
      
-    # upstream boundary condition; for now just set equal to terminus velocity; doesn't account for calving
-    T = np.append(Ut/(dx*L),T)
+    # upstream boundary condition
+    T = np.append(U0/(dx*L),T)
     
     # downstream boundary condition; longitudinal resistive stress equals
     # difference between glaciostatic and hydrostatic stresses
+    
+    
+    
     T = np.append(T,0.5*gg[-1])
+    
+    if data.subgrain_deformation=='n':
+        T[-1] = T[-1]*(1-logistic(config.d/(1.5*data.H[-1]-0.5*data.H[-2]),0.9,100))
     
     res = np.matmul(D,U)-T
     
@@ -446,9 +468,12 @@ def calc_gg(gg, data):
     f = np.abs(f)
     if np.min(f)<0:
         sys.exit('g_loc less than 0!')
+
     
     g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
- 
+    
+    if data.subgrain_deformation=='n':
+        g_loc = g_loc*np.sqrt((1-logistic(config.d/H,0.9,100)))
 
     # Regularization of abs(mu-muS)
     f_mu = 2/k*np.log(1+np.exp(k*(mu-config.muS)))-mu+config.muS-2/k*np.log(1+np.exp(-k*config.muS))
@@ -460,8 +485,8 @@ def calc_gg(gg, data):
     # boundary conditions:
     #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
     
-    bc = 'second-order' # specify whether boundary condition should be 'first-order' accurate or 'second-order' accurate
-    # stability issues when using second-order---why???
+    bc = 'first-order' # specify whether boundary condition should be 'first-order' accurate or 'second-order' accurate
+    
     
     a_left = np.ones(len(mu)-1)/(L*dx)**2
     a = -(2/(L*dx)**2 + zeta)    
@@ -528,7 +553,7 @@ def calc_muW(muW, H, W, U):
     return(du)
 
 #%%    
-def calc_H(H, data, H_prev):    
+def calc_H(H, data, H_prev):#, Qf):    
     '''
     Compute the residual for the thickness differential equation.
 
@@ -544,7 +569,6 @@ def calc_H(H, data, H_prev):
     '''
     
     # extract variables from the model object
-    x = data.x
     x_ = data.x_
     dx = data.dx
     dt = data.dt
@@ -788,23 +812,28 @@ def plot_basic_figure(data, axes, color_id, k):
     
     # extract variables from model object
     X = data.X
-    X_ = data.X_
+    X_ = np.concatenate(([0],data.X_,[data.X[-1]]))
     U = data.U
-    H = data.H
+    H = np.concatenate(([data.H0],data.H,[1.5*data.H[-1]-0.5*data.H[-2]]))
     W = data.W
-    gg = data.gg
-    muW = data.muW
+    gg = np.concatenate(([1.5*data.gg[0]-0.5*data.gg[1]],data.gg,[1.5*data.gg[-1]-0.5*data.gg[-2]]))
+    muW = np.concatenate(([1.5*data.muW[0]-0.5*data.muW[1]],data.muW,[1.5*data.muW[-1]-0.5*data.muW[-2]]))
+    muW[0] = np.min((muW[0], config.muW_max))
+    muW[-1] = np.min((muW[-1], config.muW_max))
     W = data.W
 
     # compute transverse velocity profile
+    # need to clean this up later
     ind = int(len(W)/2) # index of midpoint in fjord
-    y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind])    
+    y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind])  
+    u_slip = U[ind]-np.mean(u_transverse)
+    u_transverse += u_slip
 
     ax1, ax2, ax3, ax4, ax5, ax_cbar = axes
     ax1.plot(X,U/config.daysYear,color=plt.cm.viridis(color_id[k]))
     ax2.plot(np.append(X_,X_[::-1]),np.append(-config.rho/config.rho_w*H,(1-config.rho/config.rho_w)*H[::-1]),color=plt.cm.viridis(color_id[k]))
     ax3.plot(X_,gg,color=plt.cm.viridis(color_id[k]))
-    ax4.plot(X[1:-1],muW,color=plt.cm.viridis(color_id[k]))
+    ax4.plot(X,muW,color=plt.cm.viridis(color_id[k]))
     ax5.plot(np.append(y,y+y[-1]),np.append(u_transverse,u_transverse[-1::-1])/config.daysYear,color=plt.cm.viridis(color_id[k]))
 
 
