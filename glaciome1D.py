@@ -23,8 +23,8 @@ import os
 class glaciome:
     '''
     The model class contains model variables, which simplifies passing variables
-    into and out of functions, and methods for model spinup and implicit and 
-    explicit time steps.
+    into and out of functions, and methods for model spinup, diagnostic solutions,
+    and implicit time steps.
     '''
     
     def __init__(self, n_pts, dt, L, Ut, Uc, Ht):
@@ -133,7 +133,13 @@ class glaciome:
         H_prev = self.H
         L_prev = self.L
         
-        UggHL = np.concatenate((self.U,self.gg,self.H,[self.L]))
+        # ##### implementing something similar to Christian et al. to determine calving from end of melange
+        HL = 1.5*H_prev[-1]-0.5*H_prev[-2] # thickness at end of melange during previous time step
+        print(str(HL) + ' m')
+        
+        
+        UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
+        
         result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-9, options={'maxiter':int(1e6)})
         print('result status: ' + str(result.status))
         print('result success: ' + str(result.success))
@@ -229,42 +235,40 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     data.U0 = data.Ut + data.Uc*(data.Ht/data.H0-1)
     data.L = UggHL[-1]
 
-
-    Hscale = 100
-    Lscale = 1e4
-    Uscale = 0.5e4
-    Tscale = Lscale/Uscale
+    # introduce some scales for non-dimensionalizing the differential equations
+    Hscale = 100 # [m]
+    Lscale = 1e4 # [m]
+    Uscale = 0.5e4 # [m/a]
+    Tscale = Lscale/Uscale # [a]
 
     resU = calc_U(data.U, data) * (Lscale/(Uscale*Hscale**2*Tscale))
     resgg = calc_gg(data.gg, data) * Tscale**2
     resH = calc_H(data.H, data, H_prev) * Tscale/Hscale
 
-    # this works, but doesn't allow for calving from the end of the melange
-    resL = ((data.L-L_prev)/data.dt + data.Ut - data.Uc - data.U[-1]) * Tscale/Lscale
-    
-
-
-    # ##### implementing something similar to Christian et al.
-    # HL = 1.5*H_prev[-1]-0.5*H_prev[-2] # thickness at end of melange
-    
-    # # # find where melange crosses critical thickness
-    # ind = np.where(H_prev-config.Hc<0)[0] 
-    # if len(ind)!=0:
-    #     find_xc = interp1d(H_prev[:ind[0]+1]-config.Hc, data.x_[:ind[0]+1])
-    #     xc = find_xc(0)
-    #     dXLdt = -data.L*(1-xc)/data.dt
+    # ##### implementing something similar to Christian et al. to determine calving from end of melange
+    HL = 1.5*H_prev[-1]-0.5*H_prev[-2] # thickness at end of melange during previous time step
+    #print(HL)
+    ## find grid points that are below the critical thickness
+    ind = np.where(data.H-config.Hc<0)[0] 
+    if len(ind)!=0:
+        # create linear interpolator from terminus to point where first drops below the critical thickness
+        find_xc = interp1d(data.H[:ind[0]+1]-config.Hc, data.x_[:ind[0]+1]) 
+        # determine location where the thickness equals the critical thickness
+        xc = find_xc(0)
+        ULc = data.L*(1-xc)/data.dt
+    #    print(ULc*data.dt)
     #     #Qf = (HL+H_prev[-1])/2*dXLdt
-    # else:
-    #     dXLdt = data.U[-1]
+    else:
+        ULc = 0
     #     #Qf = 0
-    
-    
-    # resL = (data.L-L_prev)/data.dt + data.Ut - data.Uc - dXLdt
+        
+    # needs work!    
+    resL = ((data.L-L_prev)/data.dt + data.Ut - data.Uc - data.U[-1] + ULc) * Tscale/Lscale
 
     
 
     
-    # append residuals into single variable to minimized
+    # append residuals into single variable to be minimized
     resUggHL = np.concatenate((resU, resgg, resH, [resL]))    
     
     

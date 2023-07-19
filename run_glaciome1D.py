@@ -37,7 +37,7 @@ Ut = 0.5e4 # glacier terminus velocity [m/a]; treated as a constant
 Uc = 0.5e4 # glacier calving rate [m/a]; treated as a constant
 Ht = 500 # terminus thickness
 n = 11 # number of time steps
-dt = 0.1 # time step [a]; needs to be quite small for this to work
+dt = 0.01 # time step [a]; needs to be quite small for this to work
 
 # Load spin-up or run spin-up if it hasn't already been done
 if os.path.exists('spinup.pickle'):
