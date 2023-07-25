@@ -2,7 +2,7 @@ import numpy as np
 
 import os
 
-from glaciome1D import glaciome, basic_figure, plot_basic_figure
+from glaciome1D import glaciome, create_width_interpolator, basic_figure, plot_basic_figure
 
 import pickle
 
@@ -18,14 +18,9 @@ import pickle
 
 
 # COMMENTS
-# 1. Currently only able to handle constant width
-# 2. Need to work on incorporating calving of new icebergs into the melange and
-# "calving" of ice from the end of the melange
-# 3. No attempt to limit deformation below some critical thickness
-# 4. Currently assumes no slip along the fjord walls
-# 5. Have not yet included functionality for spatially variable melt rates
-# 6. Have not yet included any parameterization of drag from the water
-
+# 1. Have not yet included functionality for spatially variable melt rates
+# 2. Have not yet included any parameterization of drag from the water
+# 3. Write specific instructions for how to use this code
 
 #%%
 # basic parameters needed for setting up the model; later will modify this so that 
@@ -36,8 +31,12 @@ L = 1e4 # ice melange length
 Ut = 0.5e4 # glacier terminus velocity [m/a]; treated as a constant
 Uc = 0.5e4 # glacier calving rate [m/a]; treated as a constant
 Ht = 500 # terminus thickness
-n = 11 # number of time steps
+n = 4 # number of time steps
 dt = 0.01 # time step [a]; needs to be quite small for this to work
+
+# specifying fjord geometry
+X_fjord = np.linspace(0,20000,101)
+W_fjord = 4000*np.ones(len(X_fjord))
 
 # Load spin-up or run spin-up if it hasn't already been done
 if os.path.exists('spinup.pickle'):
@@ -48,10 +47,10 @@ if os.path.exists('spinup.pickle'):
     data.dt = dt # update the time step size in the data model in case it has changed
 else:
     print('Running model spin-up.')
-    data = glaciome(n_pts, dt, L, Ut, Uc, Ht)
+    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
     # default is to assume no deformation below the grain scale
     # set data.subgrain_deformation = 'y' if you want to change this    
-    data.subgrain_deformation = 'y'
+    data.subgrain_deformation = 'n'
     data.spinup()
 
 # set up basic figure
@@ -67,13 +66,12 @@ plot_basic_figure(data, axes, color_id, 0)
 for k in np.arange(1,n):
     print('Time: ' + "{:.3f}".format(k*dt) + ' years')     
     
-    # choose between explicit or implicit time steps
-    # data.explicit() 
     data.prognostic()
+    
     #data.regrid()
     
     if (k % 1) == 0:        
         plot_basic_figure(data, axes, color_id, k)
-          
+        print(1.5*data.H[-1]-0.5*data.H[-2])  
     # data.save(k)
            

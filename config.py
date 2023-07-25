@@ -24,8 +24,8 @@ d = 25 # characteristic iceberg size [m]
 Hc = d # critical thickness [m]
 
 # parameters for granular fluidity rheology
-A = 0.5
+A = 0.5 
 b = 2e5
-muS = 0.05
+muS = 0.1
 muW_ = 2*muS # guess for muW iterations
 muW_max = 1 # maximum value for muW # better convergence if no maximum
