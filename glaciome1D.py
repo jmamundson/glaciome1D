@@ -140,7 +140,7 @@ class glaciome:
         
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
         
-        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-9, options={'maxiter':int(1e6)})
+        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-6, options={'maxiter':int(1e6)})
         print('result status: ' + str(result.status))
         print('result success: ' + str(result.success))
         print('result message: ' + str(result.message))
@@ -331,7 +331,10 @@ def calc_U(U, data):
     for k in range(len(H_)):
         muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1],data.subgrain_deformation)) # excluding first and last grid points, where we are prescribing boundary conditions
         muW[k] = np.min((muW[k],config.muW_max))
-        
+    
+    if data.subgrain_deformation=='n':
+        muW = muW*(1-logistic(config.d/H_,0.9,100))
+    
     a_left = nu[:-1]/(dx*L)**2    
     a_left = np.append(a_left,-1/(dx*L))
     
