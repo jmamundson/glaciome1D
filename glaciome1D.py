@@ -5,6 +5,7 @@ from scipy.sparse import diags
 from scipy.optimize import root
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
+from scipy.integrate import trapz
 
 import config
 
@@ -14,8 +15,6 @@ import matplotlib
 import sys
 
 import pickle
-
-#from general_utilities import second_invariant, width, pressure
 
 import os
 
@@ -53,9 +52,9 @@ class glaciome:
 
         # initial thickness (constant), velocity (exponentially decaying), and
         # granular fluidity (linearly decreasing)
-        self.H = config.d + config.d*(1-self.x_)#1.1*config.d*np.ones(len(self.x_))#
-        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
-        self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
+        self.H = config.d*(1-self.x_) + config.d
+        self.update_H_endpoints()
+        
         self.Ht = Ht
         self.Ut = Ut
         self.Uc = Uc
@@ -64,10 +63,9 @@ class glaciome:
         self.gg = 1*(1-self.x_)
         self.muW = config.muW_*np.ones(len(self.H)-1)
         
-        
         # set initial values for width and mass balance
         self.update_width()
-        self.B = 0 # initialize mass balance rate as 0 [m/a]
+        self.B = -365.25 # initialize mass balance rate as -1 m/d
         
         # time step and initial time
         self.dt = dt
@@ -76,7 +74,21 @@ class glaciome:
         self.subgrain_deformation = 'n'
         self.width_interpolator = create_width_interpolator(X_fjord, W_fjord)
         self.W = np.array([self.width_interpolator(x) for x in self.X_])
+        self.update_W_endpoints()
+        
+    def steadystate(self):
+        '''
+        Updates the glaciome instance to create a steady-state profile. This is
+        useful for model initiation.
+        '''
 
+        HL_values = np.concatenate((self.H,[self.L]))
+        self.Uc = self.Ut
+        self.U = self.Ut*np.ones(len(self.U))
+        result = root(calc_steady_state, HL_values, (self), method='lm', options={'maxiter':int(1e6)}) 
+        self.H = result.x[:-1]
+        self.L = result.x[-1]
+        
 
     def spinup(self):
         '''
@@ -140,7 +152,7 @@ class glaciome:
         
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
         
-        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', tol=1e-6, options={'maxiter':int(1e6)})
+        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
         print('result status: ' + str(result.status))
         print('result success: ' + str(result.success))
         print('result message: ' + str(result.message))
@@ -162,9 +174,8 @@ class glaciome:
         # Update the time stored within the model object.
         self.t += self.dt
        
-        print(self.X[-1])
+        print(self.L)
         
-
         
     def update_muW(self):
         '''
@@ -175,9 +186,12 @@ class glaciome:
         '''
         
         H_ = (self.H[:-1]+self.H[1:])/2
+        if self.subgrain_deformation=='n':
+            H_ = deformational_thickness(H_)
+            
         W_ = (self.W[:-1]+self.W[1:])/2
         for k in range(len(self.H)-1):
-            self.muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],self.U[k+1], self.subgrain_deformation)) # excluding first and last grid points, where we are prescribing boundary conditions
+            self.muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],self.U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
             self.muW[k] = np.min((self.muW[k], config.muW_max))
             
     def update_width(self):  
@@ -188,8 +202,13 @@ class glaciome:
         
         self.W = 4000*np.ones(len(self.X_))
         
+    def update_H_endpoints(self):
+        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+        self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
         
-        
+    def update_W_endpoints(self):
+        self.W0 = self.width_interpolator(self.X[0])
+        self.WL = self.width_interpolator(self.X[-1])
         
     def save(self,k):
         '''
@@ -233,23 +252,13 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     
     resU = calc_U(data.U, data) * (Lscale/(Uscale*Hscale**2*Tscale))
     resgg = calc_gg(data.gg, data) * Tscale**2
-    resH = calc_H(data.H, data, H_prev) / Hscale # scaling here might be wrong, check how equation is formulated!
+    resH = calc_H(data.H, data, H_prev) * Tscale / Hscale # scaling here might be wrong, check how equation is formulated!
 
-        
-    # needs work!    
-    #resL = ((data.L-L_prev)/data.dt + data.Ut - data.Uc - data.U[-1]) * Tscale/Lscale
-    #resL = (((data.L-L_prev))/data.dt - data.dLdt*data.dt ) * Tscale/Lscale
-    #resL = (((data.L-L_prev))/data.dt + data.Ut - data.Uc - data.dXLdt) * Tscale/Lscale
-    
     resHc = (1.5*data.H[-1]-0.5*data.H[-2]-config.Hc) / Hscale
     
     # append residuals into single variable to be minimized
     resUggHL = np.concatenate((resU, resgg, resH, [resHc]))    
     
-    #print('resU: ' + str(np.max(resU)))
-    #print('resgg: ' + str(np.max(resgg)))
-    #print('resH: ' + str(np.max(resH)))
-    #print('resHc: ' + str(np.max(resHc)))
     
     return(resUggHL)
 
@@ -312,13 +321,6 @@ def calc_U(U, data):
     L = data.L
     muW = data.muW
     U0 = data.U0
-    
-    nu = H**2/gg # for simplicity, later
-    
-    if data.subgrain_deformation=='n':
-        # function for forcing the strain rate to go to zero for thin ice melange
-        f = 1-logistic(config.d/H,0.9,100)
-        nu = nu/f     
         
     # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
     # note that these start at the second grid point
@@ -326,14 +328,23 @@ def calc_U(U, data):
     W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
     
     
+    # create new variable, nu, to simplify discretization
+    if data.subgrain_deformation=='n':
+        Hd = deformational_thickness(H)
+        Hd_ = deformational_thickness(H_)
+        nu = H*Hd/gg
+    else:
+        nu = H**2/gg 
+    
     ## THIS FOR LOOP CAN BE PARALELLIZED LATER
     # calculate muW given the current velocity profile
     for k in range(len(H_)):
-        muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1],data.subgrain_deformation)) # excluding first and last grid points, where we are prescribing boundary conditions
+        if data.subgrain_deformation=='n':
+            muW[k] = fsolve(calc_muW, config.muW_, (Hd_[k],W_[k],U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
+        else: 
+            muW[k] = fsolve(calc_muW, config.muW_, (H_[k],W_[k],U[k+1])) # excluding first and last grid points, where we are prescribing boundary conditions
+        
         muW[k] = np.min((muW[k],config.muW_max))
-    
-    if data.subgrain_deformation=='n':
-        muW = muW*(1-logistic(config.d/H_,0.9,100))
     
     a_left = nu[:-1]/(dx*L)**2    
     a_left = np.append(a_left,-1/(dx*L))
@@ -347,28 +358,29 @@ def calc_U(U, data):
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray() 
     
-    T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1])
+    
+    if data.subgrain_deformation=='n':
+        T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_*Hd_/W_*muW*np.sign(U[1:-1])
+    else:
+        T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_**2/W_*muW*np.sign(U[1:-1])
      
     # upstream boundary condition
     T = np.append(U0/(dx*L),T)
     
     # downstream boundary condition; longitudinal resistive stress equals
     # difference between glaciostatic and hydrostatic stresses
-    
-    
-    
-    T = np.append(T,0.5*gg[-1])
-    
     if data.subgrain_deformation=='n':
-        T[-1] = T[-1]*(1-logistic(config.d/(1.5*data.H[-1]-0.5*data.H[-2]),0.9,100))
+        T = np.append(T,0)
+    else:
+        T = np.append(T,0.5*gg[-1])
+    
     
     res = np.matmul(D,U)-T
     
-    return(res)      
-
+    return(res)
+    
 
 #%%
-
 def logistic(x,xc,k):
     '''
     Returns a logistic function. Used for regularization of g_loc and abs(mu-muS)
@@ -409,7 +421,7 @@ def calc_df(mu,muS,k):
     '''
     df = muS/np.max([mu,muS])**2 # theoretical df/d(mu); max value is to take
     # into account what happens when mu<muS
-    df_ = df + (logistic(mu,muS,k)-1)/muS # modified df/d(mu)
+    df_ = df*logistic(mu,muS,k) # modified df/d(mu)
     return(df_)
 
 
@@ -434,8 +446,12 @@ def calc_gg(gg, data):
     L = data.L
     dx = data.dx
     
-    # calculate current values of ee_chi, mu, g_loc, and zeta
+    if data.subgrain_deformation=='n':
+        H = deformational_thickness(H)
     
+    
+    # calculate current values of ee_chi, mu, g_loc, and zeta
+
     ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
     # transformed coordinate system
     
@@ -446,7 +462,7 @@ def calc_gg(gg, data):
         sys.exit('mu less than 0!')
     
     # Calculate g_loc using a regularization that approximates the next two lines.
-    # g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
+    # g_loc = config.secsYear*5000np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
     # g_loc[g_loc<0] = 0
     k = 50 # smoothing factor (small number equals more smoothing?)
    
@@ -455,14 +471,11 @@ def calc_gg(gg, data):
     if np.min(f)<0:
         sys.exit('g_loc less than 0!')
 
-    
     g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
     
-    if data.subgrain_deformation=='n':
-        g_loc = g_loc*np.sqrt((1-logistic(config.d/H,0.9,100)))
-
     # Regularization of abs(mu-muS)
-    f_mu = 2/k*np.log(1+np.exp(k*(mu-config.muS)))-mu+config.muS-2/k*np.log(1+np.exp(-k*config.muS))
+    f_mu = 2*config.muS/k*np.log(1+np.exp(k*(mu/config.muS-1))) - 2*config.muS/k*np.log(1+np.exp(-k)) + config.muS - mu
+    
 
     zeta = f_mu/(config.A**2*config.d**2)
     # Essentially Equation 19 in Amundson and Burton (2018)
@@ -503,15 +516,12 @@ def calc_gg(gg, data):
 
 
 #%%
-def calc_muW(muW, H, W, U, subgrain_deformation):
+def calc_muW(muW, H, W, U):
     '''
     Compares the velocity from the longitudinal flow model to the width-averaged
     velocity from the transverse profile, for given coefficients of friction
     and geometry. For low velocities, there is relatively little deformation and
-    muW will be small. For high velocities, muW will be high. There is no slip
-    along the fjord walls since the model doesn't assume an upper end to muW.
-
-    Currently assumes no slip.
+    muW will be small. For high velocities, muW will be high. 
 
     The minimimization is run during "calc_U".
 
@@ -528,7 +538,7 @@ def calc_muW(muW, H, W, U, subgrain_deformation):
     and the width-averaged velocity from the transverse velocity profile
     '''
     
-    _, _, u_mean = transverse(W, muW, H, subgrain_deformation)
+    _, _, u_mean = transverse(W, muW, H)
     
     # take into account that flow might be in the negative direction
     if U<0:
@@ -563,29 +573,26 @@ def calc_H(H, data, H_prev):#, Qf):
     U = data.U
     B = data.B
     Ut = data.Ut
-    Uc = data.Uc
+    Uc = data.Uc5000
     dLdt = data.dLdt
-    #dXLdt = data.dXLdt
     
-    # defined for simplicity later
-    #beta = U[0]+x_*(U[-1]-U[0])
-    #beta = U[0]+x_*((U[-1]-ULc) - (Ut-Uc))     
-    beta = U[0]+x_*dLdt
+    # defined for simplicity later  
+    #beta = U[0]+x_*dLdt
+    beta = (Ut - Uc + x_*dLdt)
     
-    a_left = dt/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
-    a_left[-1] = dt/(dx*L)*(beta[-1]-0.5*W[-2]/W[-1]*(U[-2]+U[-3]))
+    a_left = 1/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
+    a_left[-1] = 1/(dx*L)*(beta[-1]-0.5*W[-2]/W[-1]*(U[-2]+U[-3]))
     
-    a = 1 + dt/(2*dx*L)*(U[2:]+U[1:-1])
-    a[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) # check sign in front of beta!
-    #a[-1] = 1+dt/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) # test to account for calving from end of melange!!!
-    a = np.append(1+beta[0]*dt/(L*dx)-dt/(2*L*dx)*(U[1]+U[0]), a)
+    a = 1/dt + 1/(2*dx*L)*(U[2:]+U[1:-1])
+    a[-1] = 1/dt+1/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) 
+    a = np.append(1/dt+beta[0]/(L*dx)-1/(2*L*dx)*(U[1]+U[0]), a)
     
-    a[0] = 1 + dt/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
+    a[0] = 1/dt + 1/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
     
-    a_right = -dt/(2*dx*L)*beta[1:]
-    a_right[0] = dt/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
+    a_right = -1/(2*dx*L)*beta[1:]
+    a_right[0] = 1/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
     
-    T = B*dt + H_prev
+    T = B + H_prev/dt
     
     
     diagonals = [a_left,a,a_right]
@@ -594,7 +601,7 @@ def calc_H(H, data, H_prev):#, Qf):
     # set d^2{H}/dx^2=0 across the first three grid points (to deal with upwind scheme)
     D[0,0] = 1
     D[0,1] = -2
-    D[0,2] = 1
+    D[0,2] = 15000
     T[0] = 0
     
     res = np.matmul(D,H) - T
@@ -603,7 +610,7 @@ def calc_H(H, data, H_prev):#, Qf):
 
 
 #%% solve transverse velocity for nonlocal rheology
-def transverse(W,muW,H,subgrain_deformation): 
+def transverse(W, muW, H): 
     '''
     Calculates transverse velocity profiles for the nonlocal granular fluidity
     rheology. See Amundson and Burton (2018) for details.
@@ -638,10 +645,8 @@ def transverse(W,muW,H,subgrain_deformation):
     g_loc = np.zeros(len(y))
     g_loc[y<y_c] = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu[y<y_c]-config.muS)/(mu[y<y_c]*config.b*config.d) # local granular fluidity
     
-    if subgrain_deformation=='n':
-        g_loc = g_loc*np.sqrt((1-logistic(config.d/H,0.9,100)))
     
-    # First solve for the granular fluidity. we set dg/dy = 0 at
+    # Compute residual for the granular fluidity. we set dg/dy = 0 at
     # y = 0 and at y = W/2. Because mu is known, this does not need to be done
     # iteratively (as it was done in the along-flow direction.)    
     
@@ -689,6 +694,75 @@ def transverse(W,muW,H,subgrain_deformation):
 
 
 #%%
+def calc_steady_state(HL_values, data):
+    '''
+    Calculates steady-state profiles (dL/dt=0, dH/dt=0, Ut=Uc, dU/dx=0)
+
+    Parameters
+    ----------
+    HL : Array that contains the initial guesses for H and L [m]
+    data : glaciome object
+
+    Returns
+    -------
+    res : Residual of the differential equation; this needs to be minimized to
+    determine the profiles
+
+    Note that there are the following number of unknowns, which requires the
+    same number of equations.
+    
+    H: N-1 unknowns
+    L: 1 unknown
+    total: N unknowns
+    '''
+    
+    data.H = HL_values[0:-1]
+    data.L = HL_values[-1]
+    
+    # thicknesses at x = 0 and x = 1
+    data.update_H_endpoints()
+    data.update_W_endpoints()
+    
+    # because steady-state, Ut = Uc
+    data.U0 = data.Ut*data.Ht/data.H0
+    
+    # subtract the grain scale
+    Hd = deformational_thickness(data.H) # between the grid points
+    Hd_ = (Hd[1:]+Hd[:-1])/2 # on the grid points
+    
+    data.X_ = data.x_*data.L # coordinates between the grid points
+   
+    data.W = data.width_interpolator(data.X_)
+    W_ = (data.W[1:]+data.W[:-1])/2 # on the grid points, excluding end points
+    
+    
+    dx = data.dx
+    B = data.B
+    
+    #muW = np.ones(len(Hd_))*config.muW_
+    
+    for k in range(len(Hd_)):
+        data.muW[k] = fsolve(calc_muW, config.muW_, (Hd_[k],W_[k],data.U0)) # excluding first and last grid points, where we are prescribing boundary conditions
+    
+        
+    # scales
+    Hscale = 100
+    Uscale = 5000
+    
+    # N equations
+    resH = ((data.H[1:]-data.H[:-1])/(data.L*dx) + Hd_/W_*data.muW) # N-2 equations 
+    resHend = (data.H[-1]-config.d)/Hscale # 1 equation
+    
+    BW_int = trapz(B*np.concatenate(([data.W0],data.W,[data.WL])),np.concatenate(([0],data.X_,[data.L]))) # integral of B*W*dx
+    resB = (BW_int+data.U0*(data.H0*data.W0-data.HL*data.WL))/Uscale # 1 equation
+    
+    
+    res = np.concatenate((resH,[resHend],[resB]))
+    
+    return(res)
+
+
+#%%
 def create_width_interpolator(X_fjord, W_fjord):
     '''
     The width on the staggered grid must be determined at each time step. This 
@@ -707,6 +781,8 @@ def create_width_interpolator(X_fjord, W_fjord):
     width_interpolator = interp1d(X_fjord, W_fjord) 
 
     return(width_interpolator)
+
+
 
 
 #%% 
@@ -728,6 +804,29 @@ def second_invariant(U,dx):
 
     return(ee_chi)
 
+#%%
+def deformational_thickness(H):
+    '''
+    Subtract the grain size so that deformation only occurs above this value. 
+    In order to prevent negative pressures, this is done by using an integrated
+    logistic function
+
+    Parameters
+    ----------
+    H : ice melange thickness [m]
+    
+    Returns
+    -------
+    Hd : ice melange thickness minus the grain size [m]
+
+    '''
+    
+    k = 100
+    Hd = np.log(1+np.exp(k*(H-config.d)/config.d))*config.d/k
+    #Hd = np.array([np.max([0,x-config.d]) for x in H])
+    
+    return(Hd)
+    
 
 #%% calculate the effective pressure driving flow
 def pressure(H):
@@ -828,7 +927,7 @@ def plot_basic_figure(data, axes, color_id, k):
     
     # extract variables from model object
     X = data.X
-    X_ = np.concatenate(([0],data.X_,[data.X[-1]]))
+    X_ = np.concatenate(([data.X[0]],data.X_,[data.X[-1]]))
     U = data.U
     H = np.concatenate(([data.H0],data.H,[1.5*data.H[-1]-0.5*data.H[-2]]))
     W = data.W
@@ -838,10 +937,19 @@ def plot_basic_figure(data, axes, color_id, k):
     muW[-1] = np.min((muW[-1], config.muW_max))
     W = data.W
     
+    X = X-X[0]
+    X_ = X_-X_[0]
     # compute transverse velocity profile
     # need to clean this up later
     ind = int(len(W)/2) # index of midpoint in fjord
-    y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind],data.subgrain_deformation)  
+    
+    if data.subgrain_deformation=='n':
+        #y, u_transverse, _ = transverse(W[ind],muW[ind],deformational_thickness(H[ind]))
+        y, u_transverse, _ = transverse(W[ind],muW[ind],np.max([0,H[ind]-config.d]))
+
+    else:
+        y, u_transverse, _ = transverse(W[ind],muW[ind],H[ind])
+        
     u_slip = U[ind]-np.mean(u_transverse)
     u_transverse += u_slip
 
@@ -853,3 +961,4 @@ def plot_basic_figure(data, axes, color_id, k):
     ax5.plot(np.append(y-y[-1],y),np.append(u_transverse,u_transverse[-1::-1])/config.daysYear,color=plt.cm.viridis(color_id[k]))
 
 
+    
