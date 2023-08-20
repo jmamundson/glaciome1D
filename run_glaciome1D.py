@@ -53,7 +53,7 @@ if os.path.exists('spinup.pickle'):
 else:
     print('Running model spin-up.')
     data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-    data.steadystate()
+    #data.steadystate()
     
     # default is to assume no deformation below the grain scale
     # set data.subgrain_deformation = 'y' if you want to change this    

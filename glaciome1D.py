@@ -65,7 +65,7 @@ class glaciome:
         
         # set initial values for width and mass balance
         self.update_width()
-        self.B = -365.25 # initialize mass balance rate as -1 m/d
+        self.B = -0.5*config.daysYear # initialize mass balance rate as -1 m/d
         
         # time step and initial time
         self.dt = dt
@@ -75,6 +75,7 @@ class glaciome:
         self.width_interpolator = create_width_interpolator(X_fjord, W_fjord)
         self.W = np.array([self.width_interpolator(x) for x in self.X_])
         self.update_W_endpoints()
+        self.tauX = 5000 # drag force N/m; later divide by L to cast in terms of a stress; note units have 1/s^2, but it will be divided by gravity so it's okay
         
     def steadystate(self):
         '''
@@ -84,8 +85,9 @@ class glaciome:
 
         HL_values = np.concatenate((self.H,[self.L]))
         self.Uc = self.Ut
-        self.U = self.Ut*np.ones(len(self.U))
-        result = root(calc_steady_state, HL_values, (self), method='lm', options={'maxiter':int(1e6)}) 
+        result = root(calc_steady_state, HL_values, (self), method='lm', tol=1e-5, options={'maxiter':int(1e6)}) 
+        self.U = self.U0*np.ones(len(self.U))
+        self.gg = 0*self.gg+config.dgg
         self.H = result.x[:-1]
         self.L = result.x[-1]
         
@@ -209,7 +211,7 @@ class glaciome:
     def update_W_endpoints(self):
         self.W0 = self.width_interpolator(self.X[0])
         self.WL = self.width_interpolator(self.X[-1])
-        
+            
     def save(self,k):
         '''
         Save the model output at time step k.
@@ -462,7 +464,7 @@ def calc_gg(gg, data):
         sys.exit('mu less than 0!')
     
     # Calculate g_loc using a regularization that approximates the next two lines.
-    # g_loc = config.secsYear*5000np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
+    # g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
     # g_loc[g_loc<0] = 0
     k = 50 # smoothing factor (small number equals more smoothing?)
    
@@ -573,7 +575,7 @@ def calc_H(H, data, H_prev):#, Qf):
     U = data.U
     B = data.B
     Ut = data.Ut
-    Uc = data.Uc5000
+    Uc = data.Uc
     dLdt = data.dLdt
     
     # defined for simplicity later  
@@ -601,7 +603,7 @@ def calc_H(H, data, H_prev):#, Qf):
     # set d^2{H}/dx^2=0 across the first three grid points (to deal with upwind scheme)
     D[0,0] = 1
     D[0,1] = -2
-    D[0,2] = 15000
+    D[0,2] = 1
     T[0] = 0
     
     res = np.matmul(D,H) - T
@@ -735,11 +737,10 @@ def calc_steady_state(HL_values, data):
     data.W = data.width_interpolator(data.X_)
     W_ = (data.W[1:]+data.W[:-1])/2 # on the grid points, excluding end points
     
+    H_ = (data.H[1:]+data.H[:-1])/2 # on the grid points, excluding end points
     
     dx = data.dx
     B = data.B
-    
-    #muW = np.ones(len(Hd_))*config.muW_
     
     for k in range(len(Hd_)):
         data.muW[k] = fsolve(calc_muW, config.muW_, (Hd_[k],W_[k],data.U0)) # excluding first and last grid points, where we are prescribing boundary conditions
@@ -750,7 +751,7 @@ def calc_steady_state(HL_values, data):
     Uscale = 5000
     
     # N equations
-    resH = ((data.H[1:]-data.H[:-1])/(data.L*dx) + Hd_/W_*data.muW) # N-2 equations 
+    resH = ((data.H[1:]-data.H[:-1])/(data.L*dx) + Hd_/W_*data.muW - 2*data.tauX/(data.L*pressure(H_))) # N-2 equations 
     resHend = (data.H[-1]-config.d)/Hscale # 1 equation
     
     BW_int = trapz(B*np.concatenate(([data.W0],data.W,[data.WL])),np.concatenate(([0],data.X_,[data.L]))) # integral of B*W*dx
@@ -778,7 +779,7 @@ def create_width_interpolator(X_fjord, W_fjord):
     width_interpolator
     '''
     
-    width_interpolator = interp1d(X_fjord, W_fjord) 
+    width_interpolator = interp1d(X_fjord, W_fjord, fill_value='extrapolate') 
 
     return(width_interpolator)
 
