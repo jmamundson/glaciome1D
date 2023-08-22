@@ -33,7 +33,7 @@ import pickle
 
 n_pts = 11 # number of grid points
 L = 1e4 # ice melange length
-Ut = 0.5e4 # glacier terminus velocity [m/a]; treated as a constant
+Ut = 5e4 # glacier terminus velocity [m/a]; treated as a constant
 Uc = 0*0.5e4 # glacier calving rate [m/a]; treated as a constant
 Ht = 500 # terminus thickness
 n = 101 # number of time steps

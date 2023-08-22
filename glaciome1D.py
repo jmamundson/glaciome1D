@@ -113,11 +113,11 @@ class glaciome:
             print('Velocity residual: ' + "{:.2f}".format(np.max(np.abs(residual))) + ' m/a')
             
             # solve for granular fluidity
-            result = root(calc_gg, self.gg, (self), method='lm')
+            result = root(calc_gg, self.gg, (self), method='hybr')
             self.gg = result.x
             
             # solve for velocity and compute residual
-            result = root(calc_U, self.U, (self), method='lm')
+            result = root(calc_U, self.U, (self), method='hybr')
             U_new = result.x
             residual = self.U-U_new
             self.U = U_new
@@ -126,7 +126,7 @@ class glaciome:
         
         # now simultaneous solve for velocity and granular fluidity
         Ugg = np.concatenate((self.U,self.gg))
-        result = root(diagnostic, Ugg, (self), method='lm')
+        result = root(diagnostic, Ugg, (self), method='hybr')
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):]
         
@@ -476,7 +476,7 @@ def calc_gg(gg, data):
     g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
     
     # Regularization of abs(mu-muS)
-    f_mu = 2*config.muS/k*np.log(1+np.exp(k*(mu/config.muS-1))) - 2*config.muS/k*np.log(1+np.exp(-k)) + config.muS - mu
+    f_mu = 2*config.muS/k*np.logaddexp(0,k*(mu/config.muS-1)) - 2*config.muS/k*np.logaddexp(0,-k) + config.muS - mu
     
 
     zeta = f_mu/(config.A**2*config.d**2)
