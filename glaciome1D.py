@@ -65,7 +65,7 @@ class glaciome:
         
         # set initial values for width and mass balance
         self.update_width()
-        self.B = -0.5*config.daysYear # initialize mass balance rate as -1 m/d
+        self.B = -0.1*config.daysYear # initialize mass balance rate as -1 m/d
         
         # time step and initial time
         self.dt = dt
@@ -77,6 +77,9 @@ class glaciome:
         self.update_W_endpoints()
         self.tauX = 5000 # drag force N/m; later divide by L to cast in terms of a stress; note units have 1/s^2, but it will be divided by gravity so it's okay
         
+        self.transient = 1 # 1 for transient simulation, 0 to try to solve for steady-state
+        
+        
     def steadystate(self):
         '''
         Updates the glaciome instance to create a steady-state profile. This is
@@ -85,7 +88,7 @@ class glaciome:
 
         HL_values = np.concatenate((self.H,[self.L]))
         self.Uc = self.Ut
-        result = root(calc_steady_state, HL_values, (self), method='lm', tol=1e-5, options={'maxiter':int(1e6)}) 
+        result = root(calc_steady_state, HL_values, (self), method='hybr')#'lm', tol=1e-5, options={'maxiter':int(1e6)}) 
         self.U = self.U0*np.ones(len(self.U))
         self.gg = 0*self.gg+config.dgg
         self.H = result.x[:-1]
@@ -154,10 +157,10 @@ class glaciome:
         
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
         
-        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='lm', options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
-        print('result status: ' + str(result.status))
-        print('result success: ' + str(result.success))
-        print('result message: ' + str(result.message))
+        result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='hybr')#, options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
+        #print('result status: ' + str(result.status))
+        #print('result success: ' + str(result.success))
+        #print('result message: ' + str(result.message))
         
         
         self.U = result.x[:len(self.x)]
@@ -175,8 +178,6 @@ class glaciome:
         
         # Update the time stored within the model object.
         self.t += self.dt
-       
-        print(self.L)
         
         
     def update_muW(self):
@@ -219,7 +220,7 @@ class glaciome:
         if not os.path.exists('output'): 
             os.mkdir('output')
         
-        file_name = 'output/output_' + str(k).zfill(3) + '.pickle'
+        file_name = 'output/output_' + str(k).zfill(4) + '.pickle'
         with open(file_name, 'wb') as file:
             pickle.dump(self, file)
             file.close()
@@ -334,9 +335,11 @@ def calc_U(U, data):
     if data.subgrain_deformation=='n':
         Hd = deformational_thickness(H)
         Hd_ = deformational_thickness(H_)
-        nu = H*Hd/gg
+        nu = H*Hd/(gg+config.dgg)
+        
     else:
-        nu = H**2/gg 
+        nu = H**2/(gg+config.dgg) 
+    
     
     ## THIS FOR LOOP CAN BE PARALELLIZED LATER
     # calculate muW given the current velocity profile
@@ -473,11 +476,14 @@ def calc_gg(gg, data):
     if np.min(f)<0:
         sys.exit('g_loc less than 0!')
 
+    #f = 1-config.muS/mu
     g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
+    #g_loc[g_loc<0] = 0
     
+    k = 5
     # Regularization of abs(mu-muS)
     f_mu = 2*config.muS/k*np.logaddexp(0,k*(mu/config.muS-1)) - 2*config.muS/k*np.logaddexp(0,-k) + config.muS - mu
-    
+    #f_mu = np.abs(mu-config.muS)
 
     zeta = f_mu/(config.A**2*config.d**2)
     # Essentially Equation 19 in Amundson and Burton (2018)
@@ -580,21 +586,21 @@ def calc_H(H, data, H_prev):#, Qf):
     
     # defined for simplicity later  
     #beta = U[0]+x_*dLdt
-    beta = (Ut - Uc + x_*dLdt)
+    beta = data.transient*(Ut - Uc + x_*dLdt)
     
     a_left = 1/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
     a_left[-1] = 1/(dx*L)*(beta[-1]-0.5*W[-2]/W[-1]*(U[-2]+U[-3]))
     
-    a = 1/dt + 1/(2*dx*L)*(U[2:]+U[1:-1])
-    a[-1] = 1/dt+1/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) 
-    a = np.append(1/dt+beta[0]/(L*dx)-1/(2*L*dx)*(U[1]+U[0]), a)
+    a = data.transient*1/dt + 1/(2*dx*L)*(U[2:]+U[1:-1])
+    a[-1] = data.transient*1/dt+1/(dx*L)*(-beta[-1]+0.5*(U[-1]+U[-2])) 
+    a = np.append(data.transient*1/dt+beta[0]/(L*dx)-1/(2*L*dx)*(U[1]+U[0]), a)
     
-    a[0] = 1/dt + 1/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
+    a[0] = data.transient*1/dt + 1/(dx*L)*(beta[0] - (U[0]+U[1])/2) 
     
     a_right = -1/(2*dx*L)*beta[1:]
     a_right[0] = 1/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
     
-    T = B + H_prev/dt
+    T = B + data.transient*H_prev/dt
     
     
     diagonals = [a_left,a,a_right]
@@ -823,7 +829,7 @@ def deformational_thickness(H):
     '''
     
     k = 100
-    Hd = np.log(1+np.exp(k*(H-config.d)/config.d))*config.d/k
+    Hd = np.logaddexp(0,k*(H-config.d)/config.d)*config.d/k
     #Hd = np.array([np.max([0,x-config.d]) for x in H])
     
     return(Hd)
