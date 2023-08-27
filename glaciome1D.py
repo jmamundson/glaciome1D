@@ -1,9 +1,10 @@
+# write code to refine grid
+
 import numpy as np
 from scipy import sparse
 from scipy.optimize import fsolve
 from scipy.sparse import diags
 from scipy.optimize import root
-from scipy.integrate import quad
 from scipy.interpolate import interp1d
 from scipy.integrate import trapz
 
@@ -64,7 +65,6 @@ class glaciome:
         self.muW = config.muW_*np.ones(len(self.H)-1)
         
         # set initial values for width and mass balance
-        self.update_width()
         self.B = -0.1*config.daysYear # initialize mass balance rate as -1 m/d
         
         # time step and initial time
@@ -74,28 +74,14 @@ class glaciome:
         self.subgrain_deformation = 'n'
         self.width_interpolator = create_width_interpolator(X_fjord, W_fjord)
         self.W = np.array([self.width_interpolator(x) for x in self.X_])
-        self.update_W_endpoints()
-        self.tauX = 5000 # drag force N/m; later divide by L to cast in terms of a stress; note units have 1/s^2, but it will be divided by gravity so it's okay
+        self.update_width()
+        self.tauX = 0 # drag force N/m; later divide by L to cast in terms of a stress; note units have 1/s^2, but it will be divided by gravity so it's okay
         
         self.transient = 1 # 1 for transient simulation, 0 to try to solve for steady-state
         
         
-    def steadystate(self):
-        '''
-        Updates the glaciome instance to create a steady-state profile. This is
-        useful for model initiation.
-        '''
 
-        HL_values = np.concatenate((self.H,[self.L]))
-        self.Uc = self.Ut
-        result = root(calc_steady_state, HL_values, (self), method='hybr')#'lm', tol=1e-5, options={'maxiter':int(1e6)}) 
-        self.U = self.U0*np.ones(len(self.U))
-        self.gg = 0*self.gg+config.dgg
-        self.H = result.x[:-1]
-        self.L = result.x[-1]
-        
-
-    def spinup(self):
+    def diagnostic(self):
         '''
         Run this if a spinup.pickle file does not already exist. Requires a 
         glaciome object to have already been created.
@@ -154,13 +140,12 @@ class glaciome:
         H_prev = self.H
         L_prev = self.L
         
-        
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
         
         result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='hybr')#, options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
-        #print('result status: ' + str(result.status))
-        #print('result success: ' + str(result.success))
-        #print('result message: ' + str(result.message))
+        print('result status: ' + str(result.status))
+        print('result success: ' + str(result.success))
+        print('result message: ' + str(result.message))
         
         
         self.U = result.x[:len(self.x)]
@@ -203,24 +188,24 @@ class glaciome:
         points, X. Currently only set up to handle constant width. 
         '''       
         
-        self.W = 4000*np.ones(len(self.X_))
+        self.W = self.width_interpolator(self.X_)
+        self.W0 = self.width_interpolator(self.X[0])
+        self.WL = self.width_interpolator(self.X[-1])
         
     def update_H_endpoints(self):
         self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
         
-    def update_W_endpoints(self):
-        self.W0 = self.width_interpolator(self.X[0])
-        self.WL = self.width_interpolator(self.X[-1])
+    
             
-    def save(self,k):
+    def save(self,file_name):
         '''
         Save the model output at time step k.
         '''
         if not os.path.exists('output'): 
             os.mkdir('output')
         
-        file_name = 'output/output_' + str(k).zfill(4) + '.pickle'
+        #file_name = 'output/output_' + str(k).zfill(4) + '.pickle'
         with open(file_name, 'wb') as file:
             pickle.dump(self, file)
             file.close()
@@ -244,7 +229,6 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     data.L = UggHL[-1]
 
     data.dLdt = (data.L-L_prev)/data.dt
-
 
     # introduce some scales for non-dimensionalizing the differential equations
     Hscale = 100 # [m]
@@ -284,7 +268,6 @@ def diagnostic(Ugg,data):
 
     '''
     
-        
     # extract current values of U and gg
     data.U = Ugg[:len(data.x)]
     data.gg = Ugg[len(data.x):]
@@ -335,7 +318,9 @@ def calc_U(U, data):
     if data.subgrain_deformation=='n':
         Hd = deformational_thickness(H)
         Hd_ = deformational_thickness(H_)
-        nu = H*Hd/(gg+config.dgg)
+        nu = H*Hd/gg
+        #nu = H*Hd/(gg+config.dgg)
+        #nu = H*Hd/np.sqrt(gg**2+config.dgg**2)
         
     else:
         nu = H**2/(gg+config.dgg) 
@@ -457,10 +442,16 @@ def calc_gg(gg, data):
     
     # calculate current values of ee_chi, mu, g_loc, and zeta
 
-    ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
+    #ee_chi = second_invariant(U,dx) # second invariant of the strain rate in 
     # transformed coordinate system
+    ee_chi = second_invariant(U,dx)
     
-    mu = (ee_chi/L)/(gg+config.dgg) # effective coefficient of friction
+    
+    
+    mu = (ee_chi/L+config.deps)/gg # option 1
+    #mu = np.sqrt((ee_chi/L)**2+config.deps**2)/gg # option 2
+    # mu = (ee_chi/L)/(1-np.exp(-(ee_chi/L)/config.deps)) / gg # option 3
+    
     
     mu = np.abs(mu)
     if np.min(mu)<0:
@@ -469,20 +460,22 @@ def calc_gg(gg, data):
     # Calculate g_loc using a regularization that approximates the next two lines.
     # g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*(mu-config.muS)/(mu*config.b*config.d)
     # g_loc[g_loc<0] = 0
-    k = 50 # smoothing factor (small number equals more smoothing?)
-   
-    f = [quad(calc_df,1e-4,x,args=(config.muS,k))[0] for x in mu] 
-    f = np.abs(f)
-    if np.min(f)<0:
-        sys.exit('g_loc less than 0!')
-
-    #f = 1-config.muS/mu
-    g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
-    #g_loc[g_loc<0] = 0
     
-    k = 5
+    #k = 50 # smoothing factor (small number equals more smoothing?)
+   
+    #f = [quad(calc_df,1e-4,x,args=(config.muS,k))[0] for x in mu] 
+    #f = np.abs(f)
+    #if np.min(f)<0:
+    #    sys.exit('g_loc less than 0!')
+
+    f = 1-config.muS/mu
+    g_loc = config.secsYear*np.sqrt(pressure(H)/config.rho)*f/(config.b*config.d)
+    #print(g_loc)
+    g_loc[g_loc<0] = 0
+    
+    k = 50
     # Regularization of abs(mu-muS)
-    f_mu = 2*config.muS/k*np.logaddexp(0,k*(mu/config.muS-1)) - 2*config.muS/k*np.logaddexp(0,-k) + config.muS - mu
+    f_mu = 2/k*np.logaddexp(0,k*(mu-config.muS)) - 2/k*np.logaddexp(0,-k*config.muS) + config.muS - mu
     #f_mu = np.abs(mu-config.muS)
 
     zeta = f_mu/(config.A**2*config.d**2)
@@ -729,7 +722,7 @@ def calc_steady_state(HL_values, data):
     
     # thicknesses at x = 0 and x = 1
     data.update_H_endpoints()
-    data.update_W_endpoints()
+    data.update_width()
     
     # because steady-state, Ut = Uc
     data.U0 = data.Ut*data.Ht/data.H0
@@ -828,8 +821,8 @@ def deformational_thickness(H):
 
     '''
     
-    k = 100
-    Hd = np.logaddexp(0,k*(H-config.d)/config.d)*config.d/k
+    k = 0.25
+    Hd = np.logaddexp(0,k*(H-config.d))/k
     #Hd = np.array([np.max([0,x-config.d]) for x in H])
     
     return(Hd)
@@ -914,9 +907,9 @@ def basic_figure(n,dt):
     
     ax_cbar = plt.axes([left, bot, 2*(ax_width+xgap)+0.75*ax_width, ax_height/15])
     
-    cbar_ticks = np.linspace(0, (n-1)*dt, 11, endpoint=True)
+    #cbar_ticks = np.linspace(0, (n-1)*dt, 11, endpoint=True)
     cmap = matplotlib.cm.viridis
-    bounds = cbar_ticks
+    #bounds = cbar_ticks
     norm = matplotlib.colors.Normalize(vmin=0, vmax=(n-1)*dt)
     cb = matplotlib.colorbar.ColorbarBase(ax_cbar, cmap=cmap, norm=norm,
                                     orientation='horizontal')#,extend='min')
