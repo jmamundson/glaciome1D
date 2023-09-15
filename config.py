@@ -10,16 +10,7 @@ Created on Wed Jul 20 15:46:51 2022
 """
 
 
-rho = 917.       # density of ice
-rho_w = 1028.    # density of water
-g = 9.81         # gravitational acceleration
-
-secsDay = 86400.
-daysYear = 365.25
-secsYear = secsDay*daysYear
-
-#dgg = 0.01      # finite granular fluidity parameter
-deps = 0.1     # finite strain rate parameter [a^-1]
+deps = 0.01     # finite strain rate parameter [a^-1]
 
 d = 25 # characteristic iceberg size [m]
 Hc = d # critical thickness [m]
@@ -29,4 +20,4 @@ A = 0.5
 b = 1e5
 muS = 0.1
 muW_ = 2*muS # guess for muW iterations
-muW_max = 100 # maximum value for muW # better convergence if no maximum
+muW_max = 1 # maximum value for muW # better convergence if no maximum
