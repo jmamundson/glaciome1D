@@ -5,7 +5,7 @@ import numpy as np
 
 import os
 
-from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants
+from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants, force
 
 from scipy.integrate import trapz
 
@@ -24,9 +24,6 @@ import time
 """
 
 
-# COMMENTS
-# 1. Write specific instructions for how to use this code
-
 #%%
 # basic parameters needed for setting up the model; later will modify this so that 
 # the fjord geometry can be passed through
@@ -43,7 +40,7 @@ dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to w
 # specifying fjord geometry
 X_fjord = np.linspace(-200e3,200e3,101)
 Wt = 4800
-W_fjord = Wt + 000/10000*X_fjord
+W_fjord = Wt + 0/10000*X_fjord
 
 
 # set up basic figure
@@ -51,12 +48,15 @@ axes, color_id = basic_figure(n, dt)
 
 data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
 plot_basic_figure(data, axes, color_id, 0)
-#data.param.muS = 0.1 
-data.param.deps = 0.1
-data.diagnostic()
-plot_basic_figure(data, axes, color_id, 50)
+data.steadystate()
+plot_basic_figure(data, axes, color_id, 0)
 
-#data.param.deps = 0.01
+
+print('Solving diagnostic equations.')
+data.diagnostic()
+plot_basic_figure(data, axes, color_id, 0)
+
+#data.param.deps = 0.01 
 #data.diagnostic()
 #plot_basic_figure(data, axes, color_id, 100)
 
@@ -66,14 +66,65 @@ plot_basic_figure(data, axes, color_id, 50)
 # run prognostic simulations
 start = time.time()
 L_old = data.L
+dL = 1000 # just initiating the change in length with some large value
 
 t = 0
-print('Starting prognostic simulations.')
-for k in np.arange(1,n):
-      
+k = 0
+
+print('Solving prognostic equations.')
+
+#for k in np.arange(1,n):
+while np.abs(dL)>20:      
     data.dt = 0.25*data.dx*data.L/np.max(data.U)
     t += data.dt
+    k += 1
+    data.prognostic()
     
+    X_ = np.concatenate(([data.X[0]],data.X_,[data.X[-1]]))
+    H = np.concatenate(([data.H0],data.H,[1.5*data.H[-1]-0.5*data.H[-2]]))
+
+    
+     
+    if (k % 10) == 0:        
+        plot_basic_figure(data, axes, color_id, 0)
+        print('Time: ' + "{:.4f}".format(t) + ' years')   
+        print('Length: ' + "{:.2f}".format(data.L) + ' m')
+        print('Change in length: ' + "{:.2f}".format(data.L-L_old) + ' m') # over 10 time steps
+        print('Volume: ' + "{:.4f}".format(trapz(H, X_)*4000/1e9) + ' km^3')
+        print('H_L: ' + "{:.2f}".format(1.5*data.H[-1]-0.5*data.H[-2]) + ' m') 
+        print('CFL: ' + "{:.4f}".format(data.U[0]*data.dt/data.X[1]))
+        print(' ')
+        dL = data.L-L_old
+        L_old = data.L
+    # data.save(k)
+
+    
+stop = time.time()
+
+print((stop-start)/60)           
+
+data.transient = 0
+data.prognostic()
+plot_basic_figure(data, axes, color_id, 100)
+
+#data.save('steady_B-0pt6_W' + str(Wt) + '_dwdx0.1.pickle')
+#%%
+data.refine_grid(21)
+
+start = time.time()
+L_old = data.L
+dL = 1000 # just initiating the change in length with some large value
+
+t = 0
+k = 0
+
+print('Solving prognostic equations.')
+
+#for k in np.arange(1,n):
+while np.abs(dL)>20:      
+    data.dt = 0.25*data.dx*data.L/np.max(data.U)
+    t += data.dt
+    k += 1
     
     data.prognostic()
     
@@ -82,23 +133,24 @@ for k in np.arange(1,n):
 
     
      
-    if (k % 1) == 0:        
-        plot_basic_figure(data, axes, color_id, k)
+    if (k % 10) == 0:        
+        plot_basic_figure(data, axes, color_id, 0)
         print('Time: ' + "{:.4f}".format(t) + ' years')   
         print('Length: ' + "{:.2f}".format(data.L) + ' m')
-        print('Change in length: ' + "{:.2f}".format(data.L-L_old) + ' m')
+        print('Change in length: ' + "{:.2f}".format(data.L-L_old) + ' m') # over 10 time steps
         print('Volume: ' + "{:.4f}".format(trapz(H, X_)*4000/1e9) + ' km^3')
         print('H_L: ' + "{:.2f}".format(1.5*data.H[-1]-0.5*data.H[-2]) + ' m') 
         print('CFL: ' + "{:.4f}".format(data.U[0]*data.dt/data.X[1]))
         print(' ')
+        dL = data.L-L_old
         L_old = data.L
     # data.save(k)
+
+    
 stop = time.time()
 
 print((stop-start)/60)           
-#%% temp
-#data.transient = 0
-#data.prognostic()
-#plot_basic_figure(data, axes, color_id, 0)
 
-#data.save('steady_B-0pt6_W' + str(Wt) + '_dwdx0.1.pickle')
+data.transient = 0
+data.prognostic()
+plot_basic_figure(data, axes, color_id, 100)

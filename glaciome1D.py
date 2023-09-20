@@ -40,8 +40,8 @@ class parameters:
         
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 
-        self.b = 1e5
-        self.muS = 0.1
+        self.b = 2e4
+        self.muS = 0.2
         self.muW_ = 0.5 # guess for muW iterations
         self.muW_max = 1 # maximum value for muW 
         
@@ -105,7 +105,7 @@ class glaciome:
         self.gg = self.param.deps/self.muW[0]*np.ones(len(self.H))
         
         # set initial values for width and mass balance
-        self.B = -0.1*self.constants.daysYear # initialize mass balance rate as -1 m/d
+        self.B = -0.5*self.constants.daysYear # initialize mass balance rate as -1 m/d
         
         # time step and initial time
         self.dt = dt
@@ -148,23 +148,86 @@ class glaciome:
         H_prev = self.H
         L_prev = self.L
         
+        self.X[0] += (self.Ut-self.Uc)*self.dt # use explicit time step to find new position X0.
+        
         UggHL = np.concatenate((self.U,self.gg,self.H,[self.L])) # starting point for solving differential equations
         
         result = root(solve_prognostic, UggHL, (self, H_prev, L_prev), method='hybr')#, options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
-        print('result status: ' + str(result.status))
-        print('result success: ' + str(result.success))
-        print('result message: ' + str(result.message))
+        #print('result status: ' + str(result.status))
+        #print('result success: ' + str(result.success))
+        #print('result message: ' + str(result.message))
         
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):2*len(self.x)-1]
         self.H = result.x[2*len(self.x)-1:-1]
         self.L = result.x[-1]
-         
+        
         # Update the time stored within the model object.
         self.t += self.dt
         
-
+    def refine_grid(self, n_pts):
+        
+        x = np.linspace(0,1,n_pts)
+        x_ = (x[:-1]+x[1:])/2
+        
+        X = x*self.L + self.X[0]
+        X_ = x_*self.L + self.X[0]
+        
+        U_interpolator = interp1d(self.X, self.U, kind='linear', axis=-1, fill_value='extrapolate')
+        H_interpolator = interp1d(self.X_, self.H, kind='linear', axis=-1, fill_value='extrapolate')
+        W_interpolator = interp1d(self.X_, self.W, kind='linear', axis=-1, fill_value='extrapolate')
+        gg_interpolator = interp1d(self.X_, self.gg, kind='linear', axis=-1, fill_value='extrapolate')
+        muW_interpolator = interp1d(self.X[1:-1], self.muW, kind='linear', axis=-1, fill_value='extrapolate')
+        
+        self.U = U_interpolator(X)
+        self.H = H_interpolator(X_)
+        self.W = W_interpolator(X_)
+        self.gg = gg_interpolator(X_)
+        self.muW = muW_interpolator(X[1:-1])
+        
+        self.dx = x[1]
+        self.x = x
+        self.x_ = x_
+        self.X = X
+        self.X_ = X_
             
+    
+    def steadystate(self):
+        print('Solving diagnostic equation.')
+        self.diagnostic() # solve diagnostic equation first to ensure that model is consistent
+        L_old = self.L
+        dL = 1000 # just initiating the change in length with some large value
+        
+        k = 1 # initiate counter
+        t = 0
+        
+        print('Solving prognostic equations.')
+        while np.abs(dL)>50: # may need to adjust if final solution looks noisy      
+            self.dt = 0.25*self.dx*self.L/np.max(self.U) # use an adaptive time step, loosely based on CFL condition (for explicit schemes)
+            self.prognostic()
+            t += self.dt
+            
+            if (k%10) == 0:
+                X_ = np.concatenate(([self.X[0]],self.X_,[self.X[-1]]))
+                H = np.concatenate(([self.H0],self.H,[1.5*self.H[-1]-0.5*self.H[-2]]))
+                
+                print('Step: ' + str(int(k)) + ' years')   
+                print('Length: ' + "{:.2f}".format(self.L) + ' m')
+                print('Change in length: ' + "{:.2f}".format(self.L-L_old) + ' m') # over 10 time steps
+                print('Volume: ' + "{:.4f}".format(trapz(H, X_)*4000/1e9) + ' km^3')
+                print('H_L: ' + "{:.2f}".format(1.5*self.H[-1]-0.5*self.H[-2]) + ' m') 
+                print('CFL: ' + "{:.4f}".format(np.max(self.U)*self.dt/(self.dx*self.L)))
+                print(' ')
+                dL = self.L-L_old
+                L_old = self.L
+                
+            k += 1
+        
+        self.transient = 0
+        print('Steady-state solve.')
+        self.prognostic()
+        self.transient = 1    
+        
     def save(self,file_name):
         '''
         Save the model output at time step k.
@@ -189,6 +252,7 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     # extract current value for U, gg, H, L
     data.U = UggHL[:len(data.x)]
     data.gg = UggHL[len(data.x):2*len(data.x)-1]
+    
     data.H = UggHL[2*len(data.x)-1:-1]
     data.H0 = 1.5*data.H[0]-0.5*data.H[1]
     data.HL = 1.5*data.H[-1]-0.5*data.H[-2]
@@ -198,9 +262,7 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     data.dLdt = (data.L-L_prev)/data.dt
 
     # Update the dimensional grid and the width
-    # !!! Ut and Uc are prescribed from the previous time step
-    # !!! I think this is wrong and causing the melange to stretch way too fast
-    data.X = data.x*data.L + data.X[0] + (data.Ut-data.Uc)*data.dt
+    data.X = data.x*data.L + data.X[0]
     data.X_ = (data.X[:-1]+data.X[1:])/2
     data.W = data.width_interpolator(data.X_)
 
@@ -215,7 +277,6 @@ def solve_prognostic(UggHL, data, H_prev, L_prev):
     Lscale = 1e4 # [m]
     Uscale = 0.5e4 # [m/a]
     Tscale = Lscale/Uscale # [a]
-    
     
     resU = calc_U(data.U, data) * (Lscale/(Uscale*Hscale**2*Tscale))
     resgg = calc_gg(data.gg, data) * Tscale**2
@@ -329,7 +390,7 @@ def calc_U(U, data):
     
     
     if data.subgrain_deformation=='n':
-        T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_*Hd_/W_*muW*np.sign(U[1:-1])
+        T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_*Hd_/W_*muW*np.sign(U[1:-1]) - (data.tauX/data.L)/(data.constants.rho*data.constants.g*(1-data.constants.rho/data.constants.rho_w))
     else:
         T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_**2/W_*muW*np.sign(U[1:-1])
      
@@ -425,8 +486,8 @@ def calc_gg(gg, data):
     # transformed coordinate system
     ee_chi = second_invariant(U,dx)
     
-    #mu = (ee_chi/L+data.param.deps)/gg # option 1
-    mu = np.sqrt((ee_chi/L)**2+data.param.deps**2)/gg # option 2 !!! seems best?
+    mu = (ee_chi/L+data.param.deps)/gg # option 1
+    #mu = np.sqrt((ee_chi/L)**2+data.param.deps**2)/gg # option 2 !!! seems best?
     #mu = (ee_chi/L)/(1-np.exp(-(ee_chi/L)/data.param.deps)) / gg # option 3
     
     
@@ -771,6 +832,31 @@ def quasistatic_thickness(H,data):
 
     return(res)
 
+#%%
+def force(data):
+    '''
+    Calculate force per unit width acting on the glacier terminus
+
+    Parameters
+    ----------
+    data : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
+    H = data.H0
+    Hd = deformational_thickness(H,data)
+    gg = data.gg[0] # not strictly at x=0 due to staggered grid, but we have set dg'/dx = 0 at x=0 so this is okay
+    dUdx = (data.U[1]-data.U[0])/(data.dx*data.L)
+    
+    
+    F = -2*H*pressure(Hd,data)*dUdx/gg + H*pressure(H,data)
+
+
+    return(F)
 
 #%%
 def basic_figure(n,dt):
