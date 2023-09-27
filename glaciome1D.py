@@ -16,8 +16,13 @@ import sys
 import pickle
 
 import os
+import time
 
 #%%
+Uscale = 1e4
+Hscale = 25
+gscale = 10
+
 class constants:
     
     def __init__(self):
@@ -134,7 +139,7 @@ class glaciome:
         
         # simultaneously solve for velocity and granular fluidity
         UggmuW = np.concatenate((self.U,self.gg,self.muW))
-        result = root(solve_diagnostic, UggmuW, (self), method='hybr')
+        result = root(solve_diagnostic, UggmuW, (self), method='hybr', tol=1e-12)
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):2*len(self.x)-1]
         self.muW = result.x[2*len(self.x)-1:]
@@ -154,7 +159,7 @@ class glaciome:
         
         UggmuWHL = np.concatenate((self.U,self.gg,self.muW,self.H,[self.L])) # starting point for solving differential equations
         
-        result = root(solve_prognostic, UggmuWHL, (self, H_prev, L_prev), method='hybr')#, options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
+        result = root(solve_prognostic, UggmuWHL, (self, H_prev, L_prev), method='hybr', tol=1e-12)#, options={'maxiter':int(1e6)}) #Since we are using an implicit time step to update $H$, we must solve $2N+1$ equations: $N+1$ equations come from the stress balance equation (Equation \ref{eq:stress_balance_stretched}) and associated boundary conditions, and $N$ equations come from the mass continuity equation (Equation \ref{eq:mass_continuity_stretched}).
         #print('result status: ' + str(result.status))
         #print('result success: ' + str(result.success))
         #print('result message: ' + str(result.message))
@@ -197,16 +202,26 @@ class glaciome:
     
     def steadystate(self):
         print('Solving diagnostic equation.')
+        start = time.time()
         self.diagnostic() # solve diagnostic equation first to ensure that model is consistent
+        stop = time.time()
+        print('Diagnostic solve took ' + "{:.02f}".format(stop-start) + ' s')
         L_old = self.L
         dL = 1000 # just initiating the change in length with some large value
         
         k = 1 # initiate counter
         t = 0
+        t_old = 0
+        dLdt = 1000 # initializing with some large value
+        
+        axes, color_id = basic_figure(1000, 0.01)
+        plot_basic_figure(self, axes, color_id, 0)
+
         
         print('Solving prognostic equations.')
-        while np.abs(dL)>50: # may need to adjust if final solution looks noisy      
-            self.dt = 0.25*self.dx*self.L/np.max(self.U) # use an adaptive time step, loosely based on CFL condition (for explicit schemes)
+        while np.abs(np.abs(dLdt))>10: # may need to adjust if final solution looks noisy      
+            self.dt = 0.1*self.dx*self.L/np.max(self.U) # use an adaptive time step, loosely based on CFL condition (for explicit schemes)
+            
             self.prognostic()
             t += self.dt
             
@@ -217,13 +232,15 @@ class glaciome:
                 print('Step: ' + str(int(k)) )
                 print('Time: ' + "{:.3f}".format(t) + ' yr')
                 print('Length: ' + "{:.2f}".format(self.L) + ' m')
-                print('Change in length: ' + "{:.2f}".format(self.L-L_old) + ' m') # over 10 time steps
+                print('dL/dt: ' + "{:.2f}".format((self.L-L_old)/(t-t_old)) + ' m/yr') # over 10 time steps
                 print('Volume: ' + "{:.4f}".format(trapz(H, X_)*4000/1e9) + ' km^3')
                 print('H_L: ' + "{:.2f}".format(1.5*self.H[-1]-0.5*self.H[-2]) + ' m') 
                 print('CFL: ' + "{:.4f}".format(np.max(self.U)*self.dt/(self.dx*self.L)))
                 print(' ')
-                dL = self.L-L_old
+                dLdt = (self.L-L_old)/(t-t_old)
                 L_old = self.L
+                t_old = t
+                plot_basic_figure(self, axes, color_id, k)
                 
             k += 1
         
@@ -257,11 +274,14 @@ def solve_prognostic(UggmuWHL, data, H_prev, L_prev):
     data.U = UggmuWHL[:len(data.x)]
     data.gg = UggmuWHL[len(data.x):2*len(data.x)-1]
     data.muW = UggmuWHL[2*len(data.x)-1:3*len(data.x)-3]
+    #data.muW[data.muW>param.muW_max] = param.muW_max
+    
     data.H = UggmuWHL[3*len(data.x)-3:-1]
     data.H0 = 1.5*data.H[0]-0.5*data.H[1]
     data.HL = 1.5*data.H[-1]-0.5*data.H[-2]
     data.U0 = data.Ut + data.Uc*(data.Ht/data.H0-1)
     data.L = UggmuWHL[-1]
+
 
     data.dLdt = (data.L-L_prev)/data.dt
 
@@ -275,15 +295,9 @@ def solve_prognostic(UggmuWHL, data, H_prev, L_prev):
     data.WL = data.width_interpolator(data.X[-1])
     data.H0 = 1.5*data.H[0]-0.5*data.H[1]
     data.HL = 1.5*data.H[-1]-0.5*data.H[-2]
-
-    # introduce some scales for non-dimensionalizing the differential equations
-    Hscale = 100 # [m]
-    Lscale = 1e4 # [m]
-    Uscale = 0.5e4 # [m/a]
-    Tscale = Lscale/Uscale # [a]
     
-    resU = calc_U(data.U, data) * Lscale / Hscale**2
-    resgg = calc_gg(data.gg, data) * Tscale
+    resU = calc_U(data.U, data)  
+    resgg = calc_gg(data.gg, data) 
     
     H_ = (data.H[1:]+data.H[:-1])/2
     Hd_ = deformational_thickness(H_)
@@ -294,7 +308,7 @@ def solve_prognostic(UggmuWHL, data, H_prev, L_prev):
     
     resmuW = (Ubar - data.U[1:-1]) / Uscale
     
-    resH = calc_H(data.H, data, H_prev) * Tscale / Hscale # scaling here might be wrong, check how equation is formulated!
+    resH = calc_H(data.H, data, H_prev) #* Tscale / Hscale # scaling here might be wrong, check how equation is formulated!
 
     resHc = (1.5*data.H[-1]-0.5*data.H[-2]-data.param.d) / Hscale
     
@@ -323,20 +337,14 @@ def solve_diagnostic(UggmuW,data):
 
     '''
     
-    # introduce some scales for non-dimensionalizing the differential equations
-    Hscale = 100 # [m]
-    Lscale = 1e4 # [m]
-    Uscale = 0.5e4 # [m/a]
-    Tscale = Lscale/Uscale # [a]
-    
     # extract current values of U and gg
     data.U = UggmuW[:len(data.x)]
     data.gg = UggmuW[len(data.x):2*len(data.x)-1]
     data.muW = UggmuW[2*len(data.x)-1:]
     
     # compute residuals of velocity and granular fluidity differential equations
-    resU = calc_U(data.U, data) #* Lscale / Hscale**2
-    resgg = calc_gg(data.gg, data) * Tscale
+    resU = calc_U(data.U, data)
+    resgg = calc_gg(data.gg, data)
     
     H_ = (data.H[1:]+data.H[:-1])/2
     Hd_ = deformational_thickness(H_)
@@ -345,7 +353,7 @@ def solve_diagnostic(UggmuW,data):
     tmp = [transverse(W_[j],data.muW[j],Hd_[j]) for j in range(len(Hd_))]
     Ubar = np.array([tmp[j][2] for j in range(len(Hd_))])
     
-    resmuW = (Ubar - data.U[1:-1]) #/ Uscale
+    resmuW = (Ubar - data.U[1:-1]) / Uscale
     
     # combine the residuals into single variable to be minimized
     res = np.concatenate((resU,resgg,resmuW))
@@ -395,6 +403,7 @@ def calc_U(U, data):
     
     a = np.ones(len(U))/(dx*L)
     a[1:-1] = -(nu[1:] + nu[:-1])/(dx*L)**2
+    a[0] = 1/Uscale
     
     a_right = nu[1:]/(dx*L)**2
     a_right = np.append(0,a_right)
@@ -407,14 +416,11 @@ def calc_U(U, data):
 
      
     # upstream boundary condition
-    T = np.append(U0/(dx*L),T)
+    T = np.append(U0/Uscale,T)
     
     # downstream boundary condition; longitudinal resistive stress equals
     # difference between glaciostatic and hydrostatic stresses
-    if data.subgrain_deformation=='n':
-        T = np.append(T,0)
-    else:
-        T = np.append(T,0.5*gg[-1])
+    T = np.append(T,0)
     
     
     res = np.matmul(D,U)-T
@@ -453,7 +459,7 @@ def calc_gg(gg, data):
     # transformed coordinate system
     ee_chi = second_invariant(U,dx)
     
-    mu = (ee_chi/L+data.param.deps)/gg # option 1
+    mu = (ee_chi/L+param.deps)/gg # option 1
     #mu = np.sqrt((ee_chi/L)**2+data.param.deps**2)/gg # option 2 !!! seems best?
     #mu = (ee_chi/L)/(1-np.exp(-(ee_chi/L)/data.param.deps)) / gg # option 3
     
@@ -463,7 +469,6 @@ def calc_gg(gg, data):
         sys.exit('mu less than 0!')
     
     
-
     f = 1-data.param.muS/mu
     g_loc = data.constants.secsYear*np.sqrt(pressure(H)/data.constants.rho)*f/(data.param.b*data.param.d)
     g_loc[g_loc<0] = 0
@@ -480,37 +485,30 @@ def calc_gg(gg, data):
     # boundary conditions:
     #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
     
-    bc = 'first-order' # specify whether boundary condition should be 'first-order' accurate or 'second-order' accurate
-    
     
     a_left = np.ones(len(mu)-1)/(L*dx)**2
     a = -(2/(L*dx)**2 + zeta)    
     a_right = np.ones(len(mu)-1)/(L*dx)**2 
        
-    if bc=='second-order':
-        a_left[-1] = 2/(L*dx)**2
-        a_right[0] = 2/(L*dx)**2
+
+    # using linear interpolation to force g'=0 at X=L
+    a_left[-1] = -0.5/gscale      
+    a[-1] = 1.5/gscale
     
-    elif bc=='first-order':
-        # using linear interpolation to force g'=0 at X=L
-        a_left[-1] = -0.5      
-        a[-1] = 1.5
-        
-        # setting dg'/dx=0 at X=L; because we are using linear interpolation,
-        # we don't need to worry about being on the grid vs on the staggered
-        # grid (I don't think)
-        a[0] = -1/(L*dx) 
-        a_right[0] = 1/(L*dx)
-    
+    # setting dg'/dx=0 at X=L; because we are using linear interpolation,
+    # we don't need to worry about being on the grid vs on the staggered
+    # grid (I don't think)
+    a[0] = -1/gscale#(L*dx) 
+    a_right[0] = 1/gscale#(L*dx)
+
     diagonals = [a_left,a,a_right]
     D = diags(diagonals,[-1,0,1]).toarray() 
     
     T = -zeta*g_loc
-    
-    if bc=='first-order':
-        T[0] = 0 
-        T[-1] = 0
-    
+
+    T[0] = 0 
+    T[-1] = 0
+
     res = np.matmul(D,gg) - T
 
     return(res)
@@ -785,7 +783,7 @@ def pressure(H):
 def quasistatic_thickness(H,data):
      
     mu_w = 0.6 # coefficient of friction along the fjord walls
-    res = H - data.param.d*np.exp(mu_w*data.L*(1-data.x_)/data.W0 + (H-data.param.d)/(2*H))
+    res = H - param.d*np.exp(mu_w*data.L*(1-data.x_)/data.W0 + (H-param.d)/(2*H))
 
     return(res)
 

@@ -44,7 +44,7 @@ W_fjord = Wt + 0/10000*X_fjord
 
 
 # set up basic figure
-axes, color_id = basic_figure(n, dt)
+#axes, color_id = basic_figure(n, dt)
 
 data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
 #plot_basic_figure(data, axes, color_id, 0)
@@ -52,7 +52,26 @@ start = time.time()
 data.steadystate()
 stop = time.time()
 print(stop-start)
+#plot_basic_figure(data, axes, color_id, 10)
+
+
+
+#%%
+axes, color_id = basic_figure(9, 0.01)
 plot_basic_figure(data, axes, color_id, 0)
+grid = np.linspace(31,101,8)
+
+for j in np.arange(0,len(grid)):
+    data.refine_grid(int(grid[j]))
+    data.transient = 1
+    k = 0
+    while k<10:
+        data.prognostic()
+        k += 1
+    data.transient = 0
+    data.prognostic()
+    plot_basic_figure(data, axes, color_id, j+1)
+
 
 # #%%
 # print('Solving diagnostic equations.')
