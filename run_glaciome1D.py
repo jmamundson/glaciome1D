@@ -5,7 +5,7 @@ import numpy as np
 
 import os
 
-from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants, force
+from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants
 
 from scipy.integrate import trapz
 
@@ -29,7 +29,7 @@ import time
 # the fjord geometry can be passed through
 constant = constants()
 
-n_pts = 21 # number of grid points
+n_pts = 11 # number of grid points
 L = 1e4 # ice melange length
 Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
 Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
@@ -44,7 +44,7 @@ W_fjord = Wt + 0/10000*X_fjord
 
 
 # set up basic figure
-#axes, color_id = basic_figure(n, dt)
+
 
 data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
 #plot_basic_figure(data, axes, color_id, 0)
@@ -52,7 +52,9 @@ start = time.time()
 data.steadystate()
 stop = time.time()
 print(stop-start)
-#plot_basic_figure(data, axes, color_id, 10)
+
+axes, color_id = basic_figure(n, dt)
+plot_basic_figure(data, axes, color_id, 10)
 
 
 
