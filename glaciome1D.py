@@ -41,13 +41,14 @@ class parameters:
     '''
     
     def __init__(self):
-        self.deps = 0.1     # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
+        # you can probably decrease deps if you also decrease b
+        self.deps = 0.1 # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 
         self.b = 2e4
         self.muS = 0.2
         self.muW_ = 0.6 # guess for muW iterations
-        self.muW_max = 1 # maximum value for muW 
+        self.muW_max = 0.8 # maximum value for muW 
         
         # parameters for scaling the boundary conditions in order to make terms
         # in the equations close to 1
@@ -119,7 +120,7 @@ class glaciome:
         
         # specify some initial values for muW and gg; these will be adjusted
         # during the first diagnostic solve
-        self.muW = self.param.muW_*np.ones(len(self.U)-2)
+        self.muW = self.param.muW_*np.ones(len(self.U))
         self.gg = self.param.deps/self.muW[0]*np.ones(len(self.H))
         
         # set the specific mass balance rate (treated as spatially constant)
@@ -164,8 +165,8 @@ class glaciome:
         
         self.U = result.x[:len(self.x)]
         self.gg = result.x[len(self.x):2*len(self.x)-1]
-        self.muW = result.x[2*len(self.x)-1:3*len(self.x)-3]
-        self.H = result.x[3*len(self.x)-3:-1]
+        self.muW = result.x[2*len(self.x)-1:3*len(self.x)-1]
+        self.H = result.x[3*len(self.x)-1:-1]
         self.L = result.x[-1]
         
         # Update the time stored within the model object.
@@ -188,13 +189,13 @@ class glaciome:
         H_interpolator = interp1d(self.X_, self.H, kind='linear', axis=-1, fill_value='extrapolate')
         W_interpolator = interp1d(self.X_, self.W, kind='linear', axis=-1, fill_value='extrapolate')
         gg_interpolator = interp1d(self.X_, self.gg, kind='linear', axis=-1, fill_value='extrapolate')
-        muW_interpolator = interp1d(self.X[1:-1], self.muW, kind='linear', axis=-1, fill_value='extrapolate')
+        muW_interpolator = interp1d(self.X, self.muW, kind='linear', axis=-1, fill_value='extrapolate')
         
         self.U = U_interpolator(X)
         self.H = H_interpolator(X_)
         self.W = W_interpolator(X_)
         self.gg = gg_interpolator(X_)
-        self.muW = muW_interpolator(X[1:-1])
+        self.muW = muW_interpolator(X)
         
         self.dx = x[1]
         self.x = x
@@ -219,6 +220,7 @@ class glaciome:
         axes, color_id = basic_figure(1000, 0.01)
         plot_basic_figure(self, axes, color_id, 0)
 
+        t_step_old = time.time()
         
         print('Solving prognostic equations.')
         while np.abs(np.abs(dLdt))>100: # !!! may need to adjust if final solution looks noisy      
@@ -227,12 +229,15 @@ class glaciome:
             self.prognostic()
             t += self.dt
             
+            
             if (k%10) == 0:
                 X_ = np.concatenate(([self.X[0]],self.X_,[self.X[-1]]))
                 H = np.concatenate(([self.H0],self.H,[1.5*self.H[-1]-0.5*self.H[-2]]))
+                t_step = time.time()
                 
                 print('Step: ' + str(int(k)) )
-                print('Time: ' + "{:.3f}".format(t) + ' yr')
+                print('Time per step: ' + "{:.2f}".format((t_step-t_step_old)/10) + ' s')
+                print('Simulation time: ' + "{:.3f}".format(t) + ' yr')
                 print('Length: ' + "{:.2f}".format(self.L) + ' m')
                 print('dL/dt: ' + "{:.2f}".format((self.L-L_old)/(t-t_old)) + ' m/yr') # over 10 time steps
                 print('Volume: ' + "{:.4f}".format(trapz(H, X_)*4000/1e9) + ' km^3')
@@ -242,6 +247,9 @@ class glaciome:
                 dLdt = (self.L-L_old)/(t-t_old)
                 L_old = self.L
                 t_old = t
+                t_step_old = t_step
+                
+                
                 plot_basic_figure(self, axes, color_id, k)
                 
             k += 1
@@ -285,21 +293,24 @@ class glaciome:
         self.gg = UggmuW[len(self.x):2*len(self.x)-1]
         self.muW = UggmuW[2*len(self.x)-1:]
         
+        self.muW[self.muW > param.muW_max] = param.muW_max
+        
         # compute residuals of velocity and granular fluidity differential equations
         resU = self.__calc_U(self.U)
         resgg = self.__calc_gg(self.gg)
         
         # for each iteration, muW is used to produce a transverse velocity 
         # profile and then compare the average velocity of the profile to U
-        tmp = [self.transverse(x) for x in self.x[1:-1]]
+        tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
-        resmuW = (Ubar - self.U[1:-1]) / param.Uscale
         
-        
+        resmuW = (Ubar - self.U) / param.Uscale
+        resmuW[self.muW==param.muW_max]=0
+    
         # combine the residuals into a single variable to be minimized
         res = np.concatenate((resU,resgg,resmuW))
-            
+      
         return(res)
 
     
@@ -312,10 +323,10 @@ class glaciome:
         # extract current value for U, gg, H, L
         self.U = UggmuWHL[:len(self.x)]
         self.gg = UggmuWHL[len(self.x):2*len(self.x)-1]
-        self.muW = UggmuWHL[2*len(self.x)-1:3*len(self.x)-3]
-        #self.muW[self.muW>param.muW_max] = param.muW_max
+        self.muW = UggmuWHL[2*len(self.x)-1:3*len(self.x)-1]
+        self.muW[self.muW > param.muW_max] = param.muW_max        
         
-        self.H = UggmuWHL[3*len(self.x)-3:-1]
+        self.H = UggmuWHL[3*len(self.x)-1:-1]
         self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
         self.U0 = self.Ut + self.Uc*(self.Ht/self.H0-1)
@@ -340,10 +351,11 @@ class glaciome:
         
         # for each iteration, muW is used to produce a transverse velocity 
         # profile and then compare the average velocity of the profile to U
-        tmp = [self.transverse(x) for x in self.x[1:-1]]
+        tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
-        resmuW = (Ubar - self.U[1:-1]) / param.Uscale
+        resmuW = (Ubar - self.U) / param.Uscale
+        resmuW[self.muW==param.muW_max]=0
         
         resH = self.__calc_H(self.H, H_prev) 
         
@@ -376,7 +388,8 @@ class glaciome:
         W = self.W
         dx = self.dx
         L = self.L
-        muW = self.muW
+        muW = self.muW[1:-1]
+        #muW[muW>param.muW_max] = param.muW_max
         U0 = self.U0
             
         # determine H and W on the grid in order to calculate the coefficient of friction along the fjord walls
@@ -580,15 +593,15 @@ class glaciome:
         
         # extract W, muW, H, and Hd at the location of interest
         W = np.interp(x, self.x_, self.W)
-        muW = np.interp(x, self.x[1:-1], self.muW)
-        H = np.interp(x, self.x_, self.H)
+        muW = np.interp(x, self.x, self.muW)
+        H = np.interp(x, np.concatenate(([0],self.x_,[1])), np.concatenate(([self.H0],self.H,[self.HL])))
         Hd = self.deformational_thickness(H)
         
         n_pts = 101 # number of points in half-width
         y = np.linspace(0,W/2,n_pts) # location of points
         
         dy = y[1] # grid spacing
-    
+        
         mu = muW*(1-2*y/W) # variation in mu across the fjord, assuming quasi-static flow
     
         y_c = W/2*(1-param.muS/muW) # critical value of y for which mu is no longer greater 
@@ -858,11 +871,11 @@ def plot_basic_figure(data, axes, color_id, k):
     W_ = (data.W[:-1]+data.W[1:])/2
     H_ = (data.H[:-1]+data.H[1:])/2
     Hd_ = data.deformational_thickness(H_)
-    muW_ = data.muW
+    muW = data.muW
     
     gg = np.concatenate(([1.5*data.gg[0]-0.5*data.gg[1]],data.gg,[1.5*data.gg[-1]-0.5*data.gg[-2]]))
     
-    muW = np.concatenate(([3*data.muW[0]-3*data.muW[1]+data.muW[2]],data.muW,[3*data.muW[-1]-3*data.muW[-2]+data.muW[-3]]))
+    #muW = np.concatenate(([3*data.muW[0]-3*data.muW[1]+data.muW[2]],data.muW,[3*data.muW[-1]-3*data.muW[-2]+data.muW[-3]]))
     #muW[0] = np.min((muW[0], data.param.muW_max))
     #muW[-1] = np.min((muW[-1], data.param.muW_max))
 
