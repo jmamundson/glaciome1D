@@ -417,7 +417,7 @@ class glaciome:
         D = diags(diagonals,[-1,0,1]).toarray() 
         
         
-        T = H_*(H[1:]-H[:-1])/(dx*L) + 2*H_*Hd_/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
+        T = H_*(H[1:]-H[:-1])/(dx*L) + H_*Hd_/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
     
          
         # upstream boundary condition
