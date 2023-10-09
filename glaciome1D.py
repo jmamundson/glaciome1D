@@ -753,31 +753,6 @@ class glaciome:
         Hd = np.logaddexp(0,k*(H-param.d))/k
     
         return(Hd)
-    
-
-#%%
-# def deformational_thickness(H):
-#     '''
-#     Subtract the grain size so that deformation only occurs above this value. 
-#     In order to prevent negative pressures, this is done by using an integrated
-#     logistic function
-
-#     Parameters
-#     ----------
-#     H : ice melange thickness [m]
-    
-#     Returns
-#     -------
-#     Hd : ice melange thickness minus the grain size [m]
-
-#     '''
-    
-#     k = 0.25
-#     Hd = np.logaddexp(0,k*(H-param.d))/k
-    
-#     return(Hd)
-    
-
 
 
 
@@ -806,7 +781,7 @@ def basic_figure(n,dt):
     
     
     xmax = 15000
-    vmax = 120
+    vmax = 300
     
     ax1 = plt.axes([left, bot+ax_height+2.25*ygap, ax_width, ax_height])
     ax1.set_xlabel('Longitudinal coordinate [m]')
@@ -817,13 +792,13 @@ def basic_figure(n,dt):
     ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+2.25*ygap, ax_width, ax_height])
     ax2.set_xlabel('Longitudinal coordinate [m]')
     ax2.set_ylabel('Elevation [m]')
-    ax2.set_ylim([-75, 100])
+    ax2.set_ylim([-500, 100])
     ax2.set_xlim([0,xmax])
     
     ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [m]')
     ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
-    ax3.set_ylim([0, 20])
+    ax3.set_ylim([0, 40])
     ax3.set_xlim([0,xmax])
     
     ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
@@ -875,19 +850,13 @@ def plot_basic_figure(data, axes, color_id, k):
     
     gg = np.concatenate(([1.5*data.gg[0]-0.5*data.gg[1]],data.gg,[1.5*data.gg[-1]-0.5*data.gg[-2]]))
     
-    #muW = np.concatenate(([3*data.muW[0]-3*data.muW[1]+data.muW[2]],data.muW,[3*data.muW[-1]-3*data.muW[-2]+data.muW[-3]]))
-    #muW[0] = np.min((muW[0], data.param.muW_max))
-    #muW[-1] = np.min((muW[-1], data.param.muW_max))
-
     
     
     
     y, u_transverse, u_mean = data.transverse(0.5)
     U_ind = np.interp(0.5,data.x,data.U)
     
-    #print(u_mean)
-    #print(U[ind])    
-    u_slip = U_ind-u_mean#np.mean(u_transverse)
+    u_slip = U_ind-u_mean
     u_transverse += u_slip
 
     ax1, ax2, ax3, ax4, ax5, ax_cbar = axes
@@ -896,43 +865,3 @@ def plot_basic_figure(data, axes, color_id, k):
     ax3.plot(X_,gg,color=plt.cm.viridis(color_id[k]))
     ax4.plot(X,muW,color=plt.cm.viridis(color_id[k]))
     ax5.plot(np.append(y-y[-1],y),np.append(u_transverse,u_transverse[-1::-1])/data.constants.daysYear,color=plt.cm.viridis(color_id[k]))
-
-
-    
-#%% Outdated functions
-
-
-def calc_muW(muW, H, W, U, data):
-    '''
-    Outdated: keeping for now in case I need to revert to solving for muW within calc_U.
-    
-    Compares the velocity from the longitudinal flow model to the width-averaged
-    velocity from the transverse profile, for given coefficients of friction
-    and geometry. For low velocities, there is relatively little deformation and
-    muW will be small. For high velocities, muW will be high. 
-
-    The minimimization is run during "calc_U".
-
-    Parameters
-    ----------
-    muW : effective coefficient of friction along the fjord walls
-    H : ice melange thickness [m]
-    W : fjord width [m]
-    U : width-averaged velocity from the longitudinal flow model [m yr^-1]
-
-    Returns
-    -------
-    du : the difference between the width-averaged velocity from the flow model 
-    and the width-averaged velocity from the transverse velocity profile
-    '''
-    
-    _, _, u_mean = data.transverse(W, muW, H, data)
-    
-    # take into account that flow might be in the negative direction
-    if U<0:
-        u_mean = -u_mean
-        
-    du = np.abs(U-u_mean)    
-    
-    return(du)
-
