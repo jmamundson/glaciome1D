@@ -199,8 +199,8 @@ class glaciome:
         self.nondimensionalize()
         
         UggmuW = np.concatenate((self.U,self.gg,self.muW)) # starting point for solving the differential equations
-        # result = root(self.__solve_diagnostic, UggmuW, method='hybr', options={'maxfev':int(1e6)})
-        result = root(self.__solve_diagnostic, UggmuW, method='lm', options={'maxiter':int(1e6)})
+        result = root(self.__solve_diagnostic, UggmuW, method='hybr', options={'maxfev':int(1e6)})
+        # result = root(self.__solve_diagnostic, UggmuW, method='lm', options={'maxiter':int(1e6)})
         
         if result.success != 1:
             print('status: ' + str(result.status))
@@ -410,12 +410,8 @@ class glaciome:
         
         # for each iteration, muW is used to produce a transverse velocity 
         # profile and then compare the average velocity of the profile to U
-        # !!! this is a hack so that I don't have to modify the transverse equations just yet
-        self.redimensionalize()
         tmp = [self.transverse(x) for x in self.x]
-        Ubar = np.array([tmp[j][2] for j in range(len(tmp))]) / self.param.Uscale
-        self.nondimensionalize()
-        # !!! end temporary hack
+        Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
         resmuW = (Ubar - (self.U+self.Ut))
         
@@ -461,12 +457,8 @@ class glaciome:
         
         # for each iteration, muW is used to produce a transverse velocity 
         # profile and then compare the average velocity of the profile to U
-        # !!! temporary hack
-        self.redimensionalize()
         tmp = [self.transverse(x) for x in self.x]
-        Ubar = np.array([tmp[j][2] for j in range(len(tmp))]) / self.param.Uscale
-        self.nondimensionalize()
-        # !!! end temporary hack
+        Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
         resmuW = (Ubar - (self.U+self.Ut)) 
         
@@ -601,6 +593,8 @@ class glaciome:
         f = 1-self.param.muS/mu
         g_loc = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2*self.param.Hscale))*f/(self.param.b)
         g_loc[g_loc<0] = 0
+        g_loc = g_loc*self.param.Lscale/self.param.Uscale
+        
         
         k = 100
         # Regularization of abs(mu-muS)
@@ -721,9 +715,11 @@ class glaciome:
         '''
         
         # extract W, muW, and H at the location of interest
-        W = np.interp(x, self.x_, self.W)
+        W = np.interp(x, self.x_, self.W)*self.param.Lscale
         muW = np.interp(x, self.x, self.muW)
-        H = np.interp(x, np.concatenate(([0],self.x_,[1])), np.concatenate(([self.H0],self.H,[self.HL])))
+        H = np.interp(x, np.concatenate(([0],self.x_,[1])), np.concatenate(([self.H0],self.H,[self.HL])))*self.param.Hscale
+        d = self.param.d*self.param.Hscale
+        
         
         n_pts = 101 # number of points in half-width
         y = np.linspace(0,W/2,n_pts) # location of points
@@ -736,11 +732,11 @@ class glaciome:
         # than muS; although flow occurs below this critical value, it is needed for 
         # computing g_loc (below)
            
-        zeta = np.sqrt(np.abs(mu-self.param.muS))/(self.param.A*self.param.d)
+        zeta = np.sqrt(np.abs(mu-self.param.muS))/(self.param.A*d)
         
         g_loc = np.zeros(len(y))
-        g_loc[y<y_c] = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2))*(mu[y<y_c]-self.param.muS)/(mu[y<y_c]*self.param.b) # local granular fluidity
-        g_loc = g_loc*self.param.Lscale/self.param.Uscale
+        g_loc[y<y_c] = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*d**2))*(mu[y<y_c]-self.param.muS)/(mu[y<y_c]*self.param.b) # local granular fluidity
+       
         
         # Compute residual for the granular fluidity. we set dg/dy = 0 at
         # y = 0 and at y = W/2. Because mu is known, this does not need to be done
@@ -770,7 +766,7 @@ class glaciome:
         
         
         # transform double integral using volterra integral equation
-        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
+        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)/self.param.Uscale
         
         return(y,u,u_mean)
 
@@ -935,7 +931,11 @@ def plot_basic_figure(data, axes, color_id, k):
     
     gg = np.concatenate(([1.5*data.gg[0]-0.5*data.gg[1]],data.gg,[1.5*data.gg[-1]-0.5*data.gg[-2]]))
     
+    
+    # data.transverse assumes that data has been nondimensionalized
+    data.nondimensionalize()
     y, u_transverse, u_mean = data.transverse(0.5)
+    data.redimensionalize()
     # U_ind = np.interp(0.5,data.x,U)
     
     # u_slip = U_ind-u_mean
