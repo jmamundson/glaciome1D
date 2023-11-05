@@ -51,7 +51,7 @@ import pickle
 constant = constants()
 
 #%%
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
@@ -61,7 +61,7 @@ if run_simulations == 'y':
         file.close()
     
     else:
-        n_pts = 11 # number of grid points
+        n_pts = 21 # number of grid points
         L = 1e4 # ice melange length
         Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
         Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
@@ -77,8 +77,8 @@ if run_simulations == 'y':
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
         data.B = -0.8*constant.daysYear
         data.steadystate()
-        # data.refine_grid(51)
-        data.steadystate()
+        #data.refine_grid(51)
+        #data.steadystate()
         data.save('steady-state_Bdot_-0.80_hybr.pickle')
     
     #data.refine_grid(11)
@@ -209,7 +209,10 @@ def plot_figure(data, axes, color_id, linestyle):
     chi = np.array([0,0.25,0.5,0.75,1])
     
     for j in np.arange(0,len(chi)):
-        y, u_transverse, u_mean = data.transverse(chi[j])
+        
+        y, u_transverse, u_mean = data.transverse(chi[j], dimensionless=False)
+        
+        
         U_ind = np.interp(0.5,data.x,data.U)
     
         u_slip = U_ind-u_mean#np.mean(u_transverse)

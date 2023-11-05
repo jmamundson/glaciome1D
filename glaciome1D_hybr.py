@@ -39,8 +39,15 @@ class parameters:
     '''
     
     def __init__(self):
+        self.Uscale = 5e3 # typical terminus velocity [5 km/yr]
+        self.Lscale = 10e3 # typical ice melange length [10 km]
+        self.Bscale = 100 # typical ice melange melt rate [100 m/yr]
+        self.Hscale = self.Lscale*self.Bscale/self.Uscale # thickness scale [m]
+        self.Tscale = self.Lscale/self.Uscale # time scale [yr]
+        self.gamma = self.Hscale**2/self.Lscale**2
+        
         # you can probably decrease deps if you also decrease b
-        self.deps = 0.1 # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
+        self.deps = 0.1*self.Lscale/self.Uscale # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 
         self.b = 1e4
@@ -48,14 +55,7 @@ class parameters:
         self.muW_ = 0.6 # guess for muW iterations
         self.muW_max = 100 # maximum value for muW 
         
-        self.Uscale = 5e3 # typical terminus velocity [5 km/yr]
-        self.Lscale = 10e3 # typical ice melange length [10 km]
-        self.Bscale = 100 # typical ice melange melt rate [100 m/yr]
         
-        self.Hscale = self.Lscale*self.Bscale/self.Uscale # thickness scale [m]
-        self.Tscale = self.Lscale/self.Uscale # time scale [yr]
-        
-        self.gamma = self.Hscale**2/self.Lscale**2
         
 param = parameters()
 
@@ -124,7 +124,7 @@ class glaciome:
         # specify some initial values for muW and gg; these will be adjusted
         # during the first diagnostic solve
         self.muW = self.param.muW_*np.ones(len(self.U))
-        self.gg = self.param.deps/self.muW[0]*np.ones(len(self.H))
+        self.gg = self.param.deps*self.param.Uscale/self.param.Lscale/self.muW[0]*np.ones(len(self.H))
         
         # set the specific mass balance rate (treated as spatially constant)
         self.B = -0.8*self.constants.daysYear 
@@ -199,8 +199,8 @@ class glaciome:
         self.nondimensionalize()
         
         UggmuW = np.concatenate((self.U,self.gg,self.muW)) # starting point for solving the differential equations
-        result = root(self.__solve_diagnostic, UggmuW, method='hybr', options={'maxfev':int(1e6)})
-        # result = root(self.__solve_diagnostic, UggmuW, method='lm', options={'maxiter':int(1e6)})
+        # result = root(self.__solve_diagnostic, UggmuW, method='hybr', options={'maxfev':int(1e6), 'xtol':1e-3})
+        result = root(self.__solve_diagnostic, UggmuW, method='lm', options={'maxiter':int(1e6), 'xtol':1e-6})
         
         if result.success != 1:
             print('status: ' + str(result.status))
@@ -230,8 +230,8 @@ class glaciome:
         self.X[0] += (self.Ut-self.Uc)*self.dt # !!! use an explicit time step to find new position X0
         
         UggmuWHL = np.concatenate((self.U,self.gg,self.muW,self.H,[self.L])) # starting point for solving the differential equations
-        result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='hybr', options={'maxfev':int(1e6), 'xtol':1e-9})
-        # result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='lm', options={'maxiter':int(1e6)})
+        # result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='hybr', options={'maxfev':int(1e6), 'xtol':1e-3})
+        result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='lm', options={'maxiter':int(1e6), 'xtol':1e-3})
         
         if result.success != 1:
             print('status: ' + str(result.status))
@@ -502,15 +502,8 @@ class glaciome:
         W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
         
         
-        option = '1'
+        nu = H**2/gg
         
-        if (option == '1') or (option == '2'):
-            nu = H**2/gg
-            
-        elif option == '3':
-            exp = 1 # changing exp has only modest impacts
-            nu = H**2/gg / (1-(param.d/H)**exp) # option 3
-
         
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1/(dx*L))
@@ -526,31 +519,17 @@ class glaciome:
         D = diags(diagonals,[-1,0,1]).toarray() 
         
         
-        if option == '1':
-            T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
+        T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
 
-        elif option == '2':
-            T = (H_-self.param.d/2)*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
-
-        elif option == '3':
-            T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w)) 
-            
         # upstream boundary condition
         T = np.append(U0,T)
         
         # downstream boundary condition; longitudinal resistive stress equals
         # difference between glaciostatic and hydrostatic stresses
         
-        if option == '1':
-            T = np.append(T,0*0.5*self.gg[-1])
-            
-        elif option == '2':
-            T = np.append(T,0.5*self.gg[-1] * (1 - (self.param.d/self.HL))) 
+        T = np.append(T,0*0.5*self.gg[-1])
         
-        elif option == '3':
-            T = np.append(T,0.5*self.gg[-1] * (1 - (self.param.d/self.HL)**exp)) 
-        
-        
+    
         res = np.matmul(D,U)-T
         
         return(res)
@@ -580,7 +559,7 @@ class glaciome:
         # second invariant of the strain rate in transformed coordinate system
         ee_chi = self.__second_invariant()
         
-        mu = (ee_chi/L+param.deps*self.param.Lscale/self.param.Uscale)/gg # option 1
+        mu = (ee_chi/L+param.deps)/gg # option 1
         #mu = np.sqrt((ee_chi/L)**2+param.deps**2)/gg # option 2 !!! seems best?
         #mu = (ee_chi/L)/(1-np.exp(-(ee_chi/L)/param.deps)) / gg # option 3
         
@@ -697,28 +676,39 @@ class glaciome:
         return(res)
 
 
-    def transverse(self, x): 
+    def transverse(self, x, dimensionless=True): 
         '''
-        Calculates transverse velocity profiles for the nonlocal granular fluidity
-        rheology at dimensionless coordinate x. See Amundson and Burton (2018) for details.
+        Calculates transverse velocity profiles for the nonlocal granular 
+        fluidity rheology at dimensionless coordinate x. The function assumes 
+        that the glaciome object being passed to it has been 
+        non-dimensionalized, which is the case during model iterations. 
+        Sometimes, such as for plotting purposes, it is useful to pass in an 
+        object that has dimensional coordinates. In that case you should set
+        dimensionless=False.
     
         Parameters
         ----------
         x: location of the transect, in dimensionless coordinates
+        dimensionless: indicate whether the glaciome object has been non-dimensionalized or not
         
         Returns
         -------
         y : transverse coordinate [m]
         u : velocity at y, assuming no slip along the boundary [m a^-1]
-        u_mean : mean velocity across the profile, assuming no slip along the boundary [m a^-1]
+        u_mean : mean velocity across the profile, assuming no slip along the boundary [dimensionless]
     
         '''
         
         # extract W, muW, and H at the location of interest
-        W = np.interp(x, self.x_, self.W)*self.param.Lscale
+        W = np.interp(x, self.x_, self.W)
         muW = np.interp(x, self.x, self.muW)
-        H = np.interp(x, np.concatenate(([0],self.x_,[1])), np.concatenate(([self.H0],self.H,[self.HL])))*self.param.Hscale
-        d = self.param.d*self.param.Hscale
+        H = np.interp(x, np.concatenate(([0],self.x_,[1])), np.concatenate(([self.H0],self.H,[self.HL])))
+        d = self.param.d
+        
+        if dimensionless==True:
+            W = W*self.param.Lscale
+            H = H*self.param.Hscale
+            d = d*self.param.Hscale
         
         
         n_pts = 101 # number of points in half-width
@@ -762,11 +752,13 @@ class glaciome:
         
         
         u = cumtrapz(2*mu*gg, y, initial=0)
-        u_mean = 2/W*trapz(u,y)
         
         
         # transform double integral using volterra integral equation
-        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)/self.param.Uscale
+        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
+        
+        if dimensionless==True:
+            u_mean = u_mean/self.param.Uscale
         
         return(y,u,u_mean)
 
@@ -933,9 +925,7 @@ def plot_basic_figure(data, axes, color_id, k):
     
     
     # data.transverse assumes that data has been nondimensionalized
-    data.nondimensionalize()
-    y, u_transverse, u_mean = data.transverse(0.5)
-    data.redimensionalize()
+    y, u_transverse, u_mean = data.transverse(0.5, dimensionless=False)
     # U_ind = np.interp(0.5,data.x,U)
     
     # u_slip = U_ind-u_mean
