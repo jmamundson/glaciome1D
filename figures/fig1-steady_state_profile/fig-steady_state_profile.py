@@ -75,9 +75,6 @@ if run_simulations == 'y':
         W_fjord = Wt + 0/10000*X_fjord
         
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.B = -0.8*constant.daysYear
-        data.steadystate()
-        # data.refine_grid(51)
         data.steadystate()
         data.save('steady-state_Bdot_-0.80_lm.pickle')
     

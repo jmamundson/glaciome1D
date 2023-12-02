@@ -17,7 +17,7 @@ import pickle
 import os
 import time
 
-#%%
+#%% Define constants
 class constants:
     
     def __init__(self):
@@ -32,7 +32,7 @@ class constants:
 constant = constants()
 
 
-#%%
+#%% Scaling parameters and parameters for the nonlocal granular fluidity rheology
 class parameters:
     '''
     Parameters for the nonlocal granular fluidity rheology
@@ -47,7 +47,7 @@ class parameters:
         self.gamma = self.Hscale**2/self.Lscale**2
         
         # you can probably decrease deps if you also decrease b
-        self.deps = 0.1*self.Lscale/self.Uscale # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
+        self.deps = 0.01*self.Lscale/self.Uscale # finite strain rate parameter [a^-1]; might work best to start with the large during spin up, then decrease it?
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 
         self.b = 1e4
@@ -55,10 +55,7 @@ class parameters:
         self.muW_ = 0.6 # guess for muW iterations
         self.muW_max = 100 # maximum value for muW 
         
-        
-        
 param = parameters()
-
 
 #%%
 class glaciome:
@@ -108,9 +105,9 @@ class glaciome:
 
         # use the quasistatic thickness (Amundson and Burton, 2018) for the 
         # initial thickness profile
-        self.H = fsolve(self.__quasistatic_thickness, 2*self.param.d*np.ones(len(self.x_)))
-        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         self.HL = self.param.d
+        self.H = self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L)
+        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         
         # specify glacier terminus thickness, velocity, and calving rate, and 
         # use those values to determine the initial ice melange velocity (assumed
@@ -118,13 +115,15 @@ class glaciome:
         self.Ht = Ht
         self.Ut = Ut
         self.Uc = Uc
-        self.U0 = self.Uc*self.Ht/self.H0 # !!! self.Ut + self.Uc*(self.Ht/self.H0-1)
+        self.U0 = self.Uc*self.Ht/self.H0 # velocity is relative to the terminus
         self.U = self.U0*np.ones(len(self.x))
         
         # specify some initial values for muW and gg; these will be adjusted
         # during the first diagnostic solve
         self.muW = self.param.muW_*np.ones(len(self.U))
         self.gg = self.param.deps*self.param.Uscale/self.param.Lscale/self.muW[0]*np.ones(len(self.H))
+        self.g_loc = self.param.deps*self.param.Uscale/self.param.Lscale/self.muW[0]*np.ones(len(self.H))
+        
         
         # set the specific mass balance rate (treated as spatially constant)
         self.B = -0.8*self.constants.daysYear 
@@ -137,6 +136,8 @@ class glaciome:
         
         self.transient = 1 # 1 for transient simulation, 0 to try to solve for steady-state
         
+        self.diagnostic(method='hybr') # initialize with diagnostic solution
+    
     
     def nondimensionalize(self):
         self.H = self.H/self.param.Hscale
@@ -161,7 +162,8 @@ class glaciome:
         self.dt = self.dt/self.param.Tscale
         
         self.gg = self.gg*self.param.Lscale/self.param.Uscale
-    
+        self.g_loc = self.g_loc*self.param.Lscale/self.param.Uscale
+        
     
     def redimensionalize(self):
         self.H = self.H*self.param.Hscale
@@ -181,17 +183,15 @@ class glaciome:
         self.WL = self.WL*self.param.Lscale
         self.width_interpolator = interp1d(self.X_fjord, self.W_fjord, fill_value='extrapolate')
 
-        
-        
         self.B = self.B*self.param.Bscale
         
         self.dt = self.dt*self.param.Tscale
         
         self.gg = self.gg*self.param.Uscale/self.param.Lscale
+        self.g_loc = self.g_loc*self.param.Uscale/self.param.Lscale
         
         
-    
-    def diagnostic(self):
+    def diagnostic(self, method='lm'):
         '''
         Solve for the velocity, granular fluidity, and muW for a given model geometry.
         '''
@@ -199,10 +199,14 @@ class glaciome:
         self.nondimensionalize()
         
         UggmuW = np.concatenate((self.U,self.gg,self.muW)) # starting point for solving the differential equations
-        # result = root(self.__solve_diagnostic, UggmuW, method='hybr', options={'maxfev':int(1e6), 'xtol':1e-3})
-        result = root(self.__solve_diagnostic, UggmuW, method='lm', options={'maxiter':int(1e6), 'xtol':1e-6})
         
-        if result.success != 1:
+        if method == 'hybr':
+            result = root(self.__solve_diagnostic, UggmuW, method=method, options={'maxfev':int(1e6)})#, 'xtol':1e-12})
+        elif method == 'lm':
+            result = root(self.__solve_diagnostic, UggmuW, method=method, options={'maxiter':int(1e6)})#, 'xtol':1e-12})
+            
+        
+        if result.success != 0:
             print('status: ' + str(result.status))
             print('success: ' + str(result.success))
             print('message: ' + result.message)
@@ -215,7 +219,7 @@ class glaciome:
         self.redimensionalize()
         
     
-    def prognostic(self):
+    def prognostic(self, method='hybr'):
         '''
         Use an implicit time step to determine the velocity, granular fluidity, 
         muW, thickness, and length.
@@ -230,9 +234,12 @@ class glaciome:
         self.X[0] += (self.Ut-self.Uc)*self.dt # !!! use an explicit time step to find new position X0
         
         UggmuWHL = np.concatenate((self.U,self.gg,self.muW,self.H,[self.L])) # starting point for solving the differential equations
-        # result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='hybr', options={'maxfev':int(1e6), 'xtol':1e-3})
-        result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method='lm', options={'maxiter':int(1e6), 'xtol':1e-3})
         
+        if method=='hybr':
+            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, tol=1e-3, options={'maxfev':int(1e6)})
+        elif method=='lm':
+            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, tol=1e-3, options={'maxiter':int(1e6)})
+            
         if result.success != 1:
             print('status: ' + str(result.status))
             print('success: ' + str(result.success))
@@ -254,7 +261,7 @@ class glaciome:
         self.redimensionalize()
         
         
-    def refine_grid(self, n_pts):
+    def regrid(self, n_pts):
         '''
         It is sometimes helpful to spin up the model with a coarse grid (e.g., 
         n_pts = 21), refine the grid, and then run to a new steady-state.
@@ -286,11 +293,7 @@ class glaciome:
             
     
     def steadystate(self):
-        print('Solving diagnostic equation.')
-        start = time.time()
-        self.diagnostic() # solve diagnostic equation first to ensure that model is consistent
-        stop = time.time()
-        print('Diagnostic solve took ' + "{:.02f}".format(stop-start) + ' s')
+        
         L_old = self.L
         
         k = 1 # initiate counter
@@ -311,10 +314,31 @@ class glaciome:
         #dVdt2_old = (self.U0*self.H0*self.W0 + self.B*simpson(W,X_) - self.U[-1]*self.param.d*self.WL)*1e-9
         
         print('Solving prognostic equations.')
-        while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
-            self.dt = 0.1*self.dx*self.L/np.max(self.U) # use an adaptive time step, loosely based on CFL condition (for explicit schemes)
+        self.dt = 0.001 #
+        #self.dt = 0.1*self.dx*self.L/np.max(self.U) # use an adaptive time step, loosely based on CFL condition (for explicit schemes)
+        
+        self.prognostic(method='lm')
+        t += self.dt
+        
+        X_ = np.concatenate(([self.X[0]], self.X_, [self.X[-1]]))
+        H = np.concatenate(([self.H0], self.H, [self.HL]))
+        W = np.concatenate(([self.W0], self.W, [self.WL]))
+        # V = simpson(H*W, X_)*1e-9
+        
+        V = simpson(self.H[1:-1]*self.W[1:-1], self.X_[1:-1])*1e-9
+        
+        dVdt1 = (V-V_old)/self.dt
+        
+        dVdt2 = (self.U0*self.H0*self.W0 + self.B*simpson(W,X_) - self.U[-1]*self.param.d*self.WL)*1e-9
+        
+        dVdt2 = ((self.U[0]+self.U[1])/2*self.H[0]*self.W[0] + self.B*simpson(self.W,self.X_) - (self.U[-1]+self.U[-2])/2*self.H[-1]*self.W[-1])*1e-9
+        
+        flag_old = int(0)
+        flag = int(0)
+        #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
+        while flag + flag_old < 2:
             
-            self.prognostic()
+            self.prognostic(method='lm')
             t += self.dt
             
             X_ = np.concatenate(([self.X[0]], self.X_, [self.X[-1]]))
@@ -349,35 +373,45 @@ class glaciome:
                 print('H_L: ' + "{:.2f}".format(1.5*self.H[-1]-0.5*self.H[-2]) + ' m') 
                 print('CFL: ' + "{:.4f}".format(np.max(self.U)*self.dt/(self.dx*self.L)))
                 print(' ')
+                
                 dLdt = (self.L-L_old)/(t-t_old)
+                
+                
+                flag_old = flag
+                
+                if np.abs(dLdt) < 10:
+                    flag = int(1)
+                else:
+                    flag = (0)
+                
+               
+                
                 L_old = self.L
                 
                 
                 t_old = t
                 t_step_old = t_step
-                
-                
+        
                 # plot_basic_figure(self, axes, color_id, k)
            
             V_old = V
             
             k += 1
         
-        self.transient = 0
-        print('Steady-state solve.')
-        self.prognostic()
-        # plot_basic_figure(self, axes, color_id, 999)
-        self.transient = 1    
+        # self.transient = 0
+        # print('Steady-state solve.')
+        # self.prognostic()
+        # # plot_basic_figure(self, axes, color_id, 999)
+        # self.transient = 1    
         
         
     def save(self,file_name):
         '''
-        Save the model output at time step k.
+        Save the model output.
         '''
         if not os.path.exists('output'): 
             os.mkdir('output')
         
-        #file_name = 'output/output_' + str(k).zfill(4) + '.pickle'
         with open(file_name, 'wb') as file:
             pickle.dump(self, file)
             file.close()
@@ -386,7 +420,7 @@ class glaciome:
     def __solve_diagnostic(self,UggmuW): 
         '''
         This function is minimized in order to determine the velocity, granular
-        fluidity, and muW
+        fluidity, and muW for a given geometry and model parameters.
 
         Parameters
         ----------
@@ -402,18 +436,19 @@ class glaciome:
         self.U = UggmuW[:len(self.x)]
         self.gg = UggmuW[len(self.x):2*len(self.x)-1]
         self.muW = UggmuW[2*len(self.x)-1:]
-        # !!! self.muW[self.muW > param.muW_max] = param.muW_max
+        self.muW[self.muW > param.muW_max] = param.muW_max # set maximum value for muW; just make it really high if you don't want a maximum
         
         # compute residuals of velocity and granular fluidity differential equations
         resU = self.__calc_U(self.U)
         resgg = self.__calc_gg(self.gg)
         
         # for each iteration, muW is used to produce a transverse velocity 
-        # profile and then compare the average velocity of the profile to U
+        # profile; then the average velocity of the profile is compared to U
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
         resmuW = (Ubar - (self.U+self.Ut))
+        resmuW[self.muW==param.muW_max] = 0
         
         # combine the residuals into a single variable to be minimized
         res = np.concatenate((resU,resgg,resmuW))
@@ -423,8 +458,17 @@ class glaciome:
     
     def __solve_prognostic(self, UggmuWHL, H_prev, L_prev):
         '''
-        Computes the residual for the velocity, granular fluidity, thickness, and
-        length differential equations. The residual is minimized in model.implicit.
+        This function is minimized in order to determine the velocity, granular
+        fluidity, muW, thickness, and length at each implicit time step
+
+        Parameters
+        ----------
+        UggmuWHL : an array containing the initial guess for the velocity, granular
+        fluidity, muW, thickness, and length
+
+        Returns
+        -------
+        res : residual of differential equations
         '''
         
         # extract current value for U, gg, H, L
@@ -452,23 +496,26 @@ class glaciome:
         self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
         
+        # compute residuals of velocity and granular fluidity differential equations
         resU = self.__calc_U(self.U) 
         resgg = self.__calc_gg(self.gg) 
         
         # for each iteration, muW is used to produce a transverse velocity 
-        # profile and then compare the average velocity of the profile to U
+        # profile; then the average velocity of the profile is compared to U
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
         resmuW = (Ubar - (self.U+self.Ut)) 
+        resmuW[self.muW==self.param.muW_max] = 0
         
+        # compute residual of mass continuity equation
         resH = self.__calc_H(self.H, H_prev) 
         
+        # require H_L = d
         resHc = (1.5*self.H[-1]-0.5*self.H[-2]-self.param.d)
         
         # append residuals into single variable to be minimized
         resUggmuWHL = np.concatenate((resU, resgg, resmuW, resH, [resHc]))    
-        
         
         return(resUggmuWHL)
 
@@ -484,7 +531,6 @@ class glaciome:
         Returns
         -------
         res : residual of the velocity differential equation
-    
         '''
         
         # extract variables from the model object
@@ -501,9 +547,7 @@ class glaciome:
         H_ = (H[:-1]+H[1:])/2 # thickness on the grid, excluding the first and last grid points
         W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
         
-        
         nu = H**2/gg
-        
         
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1/(dx*L))
@@ -518,7 +562,6 @@ class glaciome:
         diagonals = [a_left,a,a_right]
         D = diags(diagonals,[-1,0,1]).toarray() 
         
-        
         T = H_*(H[1:]-H[:-1])/(dx*L) + H_**2/W_*muW*np.sign(U[1:-1]) - (self.tauX/self.L)/(constant.rho*constant.g*(1-constant.rho/constant.rho_w))
 
         # upstream boundary condition
@@ -527,9 +570,8 @@ class glaciome:
         # downstream boundary condition; longitudinal resistive stress equals
         # difference between glaciostatic and hydrostatic stresses
         
-        T = np.append(T,0*0.5*self.gg[-1])
+        T = np.append(T,0)#0.5*self.gg[-1])
         
-    
         res = np.matmul(D,U)-T
         
         return(res)
@@ -553,64 +595,51 @@ class glaciome:
         L = self.L
         dx = self.dx
         
-        
         # calculate current values of ee_chi, mu, g_loc, and zeta
     
         # second invariant of the strain rate in transformed coordinate system
         ee_chi = self.__second_invariant()
         
+        # calculate the effective coefficient of friction. some regularization
+        # is needed to keep the model from blowing up
         mu = (ee_chi/L+param.deps)/gg # option 1
-        #mu = np.sqrt((ee_chi/L)**2+param.deps**2)/gg # option 2 !!! seems best?
+        # mu = np.sqrt((ee_chi/L)**2+param.deps**2)/gg # option 2 !!! seems best?
         #mu = (ee_chi/L)/(1-np.exp(-(ee_chi/L)/param.deps)) / gg # option 3
         
+        # mu = np.abs(mu) # !!! test whether this is needed
+        # if np.min(mu)<0:
+        #     sys.exit('mu less than 0!')
         
-        mu = np.abs(mu)
-        if np.min(mu)<0:
-            sys.exit('mu less than 0!')
-        
-        
-        f = 1-self.param.muS/mu
-        g_loc = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2*self.param.Hscale))*f/(self.param.b)
+        g_loc = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
         g_loc[g_loc<0] = 0
-        g_loc = g_loc*self.param.Lscale/self.param.Uscale
         
+        self.g_loc = g_loc # dimensional
         
-        k = 100
-        # Regularization of abs(mu-muS)
-        f_mu = 2/k*np.logaddexp(0,k*(mu-self.param.muS)) - 2/k*np.logaddexp(0,-k*self.param.muS) + self.param.muS - mu
+        g_loc = g_loc*self.param.Lscale/self.param.Uscale # dimensionless
         
-    
-        zeta = f_mu/(self.param.A**2*self.param.d**2)
-        # Essentially Equation 19 in Amundson and Burton (2018)
-        
-        # construct equation Dx=T
-        # boundary conditions:
-        #    dg/dx=0 is the soft boundary condition recommended by Henann and Kamrin (2013)
-        
-        
-        a_left = self.param.gamma*np.ones(len(mu)-1)/(L*dx)**2
-        a = -(self.param.gamma*2/(L*dx)**2 + zeta)    
-        a_right = self.param.gamma*np.ones(len(mu)-1)/(L*dx)**2 
-           
+        a_left = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2
+        a = -(self.param.gamma * (self.param.A*self.param.d)**2 * 2/(L*dx)**2 + np.abs(mu-self.param.muS))    
+        a_right = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2 
+         
     
         # using linear interpolation to force g'=0 at X=L
-        # a_left[-1] = -0.5/param.gscale      
-        # a[-1] = 1.5/param.gscale
+        # a_left[-1] = -0.5   
+        # a[-1] = 1.5
         
-        # setting dg'/dx = 0 at X=L         !!! option 1, 2, and 3
+        # setting dg'/dx = 0 at X=L         
         a_left[-1] = -1/(L*dx)
         a[-1] = 1/(L*dx)
         
         # setting dg'/dx=0 at X=L; because we are using linear interpolation,
         # we don't need to worry about being on the grid vs on the staggered
-        # grid (I don't think)
+        # grid
         a[0] = -1/(L*dx) 
         a_right[0] = 1/(L*dx)
     
         diagonals = [a_left,a,a_right]
         D = diags(diagonals,[-1,0,1]).toarray() 
         
-        T = -zeta*g_loc
+        T = -np.abs(mu-self.param.muS) * g_loc
     
         T[0] = 0 
         T[-1] = 0
@@ -642,11 +671,9 @@ class glaciome:
         L = self.L
         U = self.U
         B = self.B
-        Ut = self.Ut
-        Uc = self.Uc
         dLdt = self.dLdt
         
-        # defined for simplicity later  
+        # defined for simplicity  
         beta = x_*dLdt
         
         a_left = 1/(2*dx*L)*(beta[1:] - W[:-1]/W[1:]*(U[1:-1]+U[:-2]))
@@ -660,7 +687,6 @@ class glaciome:
         a_right[0] = 1/(L*dx)*(-beta[0]+(U[2]+U[1])/2*W[1]/W[0])
         
         T = B + self.transient*H_prev/dt
-        
         
         diagonals = [a_left,a,a_right]
         D = diags(diagonals,[-1,0,1]).toarray()
@@ -732,27 +758,27 @@ class glaciome:
         # y = 0 and at y = W/2. Because mu is known, this does not need to be done
         # iteratively (as it is done in the along-flow direction.)    
         
-        a = -(2+dy**2*zeta**2)
-        a[0] = -1
-        a[-1] = 1
+        a = -((self.param.A*d)**2 * 2/dy**2 + np.abs(mu-self.param.muS)) #/ (self.param.A*d)**2 * dy**2
+        a[0] = -1/dy
+        a[-1] = 1/dy
         
-        a_left = np.ones(len(y)-1)
-        a_left[-1] = -1
+        a_left = (self.param.A*d)**2 * np.ones(len(y)-1)/dy**2
+        a_left[-1] = -1/dy
         
-        a_right = np.ones(len(y)-1)
+        a_right = (self.param.A*d)**2 * np.ones(len(y)-1)/dy**2
+        a_right[0] = 1/dy
         
         diagonals = [a_left,a,a_right]
         D = sparse.diags(diagonals,[-1,0,1]).toarray()
         
-        f = -g_loc*zeta**2*dy**2
+        
+        f = -np.abs(mu-self.param.muS)*g_loc
         f[0] = 0
         f[-1] = 0
         
         gg = np.linalg.solve(D,f) # solve for granular fluidity
         
-        
         u = cumtrapz(2*mu*gg, y, initial=0)
-        
         
         # transform double integral using volterra integral equation
         u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
@@ -777,28 +803,9 @@ class glaciome:
         ee_chi : second invariant of the strain rate tensor [1/yr]
         '''
         
-        ee_chi = np.sqrt((np.diff(self.U)/self.dx)**2/2)
+        ee_chi = np.sqrt((np.diff(self.U)/self.dx)**2)
 
         return(ee_chi)
-
-
-    def __quasistatic_thickness(self,H):
-        '''
-        Used for determining the thickness profile assuming quasi-static flow, constant mu_w, and constant width
-        
-        Parameters
-        ----------
-        H : initial guess for the thickness profile [m]
-
-        Returns
-        -------
-        res : need to determine H iteratively in order to solve implicit equation
-        '''
-    
-        mu_w = param.muW_ # coefficient of friction along the fjord walls
-        res = H - param.d*np.exp(mu_w*self.L*(1-self.x_)/self.W0 + (H-param.d)/(2*H))
-    
-        return(res)
 
 
     def force(self):
