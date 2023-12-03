@@ -342,7 +342,7 @@ class glaciome:
         flag = int(0)
         #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
         while flag + flag_old < 2:
-            self.dt = 0.1
+            self.dt = 0.001
             
             self.prognostic()
             t += self.dt
@@ -558,7 +558,7 @@ class glaciome:
         
         # nu = H**2/np.sqrt(gg**2+self.param.deps**2)
         nu = H**2/gg
-        # nu = H**2/(gg + np.diff(self.U)/self.dx + self.param.deps) # !!! corrected rheology (3-Dec-2023)
+        #nu = H**2/(gg + np.diff(self.U)/self.dx) # !!! corrected rheology (3-Dec-2023)
         
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1/(dx*L))
@@ -580,7 +580,7 @@ class glaciome:
         
         # downstream boundary condition; longitudinal resistive stress equals
         # difference between glaciostatic and hydrostatic stresses
-        T = np.append(T,0*0.5*self.gg[-1])
+        T = np.append(T,0.5*(1.5*self.gg[-1]-0.5*self.gg[-2]))
 
         res = np.matmul(D,U)-T
         
@@ -612,8 +612,8 @@ class glaciome:
         
         # calculate the effective coefficient of friction. some regularization
         # is needed to keep the model from blowing up
-        # mu = (ee_chi/L+self.param.deps)/gg # option 1
-        mu = np.sqrt((ee_chi/L)**2 + self.param.deps**2)/gg # option 2
+        mu = (ee_chi/L+self.param.deps)/gg # option 1
+        # mu = np.sqrt((ee_chi/L)**2 + self.param.deps**2)/gg # option 2
 	
         self.mu = mu
         
@@ -629,14 +629,14 @@ class glaciome:
         a_right = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2 
     
         # using linear interpolation to force g'=0 at X=L
-        # a_left[-1] = -0.5   
-        # a[-1] = 1.5
+        a_left[-1] = -0.5   
+        a[-1] = 1.5
         
         # setting dg'/dx = 0 at X=L; because we are using linear interpolation,
         # we don't need to worry about being on the grid vs on the staggered
         # grid (I don't think)
-        a_left[-1] = -1/(L*dx)
-        a[-1] = 1/(L*dx)
+        # a_left[-1] = -1/(L*dx)
+        # a[-1] = 1/(L*dx)
         
         # setting dg'/dx=0 at X=0; because we are using linear interpolation,
         # we don't need to worry about being on the grid vs on the staggered
@@ -843,7 +843,7 @@ class glaciome:
         '''
         
         P = 0.5*constant.rho*constant.g*(1-constant.rho/constant.rho_w)*H
-        
+       
         return(P)
 
 
