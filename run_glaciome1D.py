@@ -5,7 +5,7 @@ import numpy as np
 
 import os
 
-from glaciome1D_hybr import glaciome, basic_figure, plot_basic_figure, constants
+from glaciome1D_dimensional import glaciome, basic_figure, plot_basic_figure, constants
 
 from scipy.integrate import trapz
 
@@ -47,8 +47,11 @@ W_fjord = Wt + 0/10000*X_fjord
 axes, color_id = basic_figure(n, dt)
 
 data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-#plot_basic_figure(data, axes, color_id, 0)
+#data.calc_gg_only()
+data.diagnostic()
+plot_basic_figure(data, axes, color_id, 0)
 
+#%%
 data.diagnostic()
 plot_basic_figure(data, axes, color_id, 0)
 

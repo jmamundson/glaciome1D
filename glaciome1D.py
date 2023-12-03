@@ -46,10 +46,10 @@ class parameters:
     '''
     
     def __init__(self):
-        self.Uscale = 5e3 # typical terminus velocity [5 km/yr]
+        self.Uscale = 5e4 # typical ice melange velocity [50 km/yr; a little over 100 m/day] !!! somehow there is a problem with this scale!
         self.Lscale = 10e3 # typical ice melange length [10 km]
         self.Bscale = 100 # typical ice melange melt rate [100 m/yr]
-        self.Hscale = self.Lscale*self.Bscale/self.Uscale # thickness scale [m]
+        self.Hscale = 25 # self.Lscale*self.Bscale/self.Uscale # thickness scale [m]
         self.Tscale = self.Lscale/self.Uscale # time scale [yr]
         self.gamma = self.Hscale**2/self.Lscale**2
         
@@ -113,9 +113,15 @@ class glaciome:
         # assume quasistatic flow (dU/dx=0), constant muW, and constant width
         # to determine initial thickness profile
         self.HL = self.param.d # thickness at X=L, set equal to grain size
-        self.H = self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L)
+        self.H = 2*self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L)
         self.H0 = 1.5*self.H[0]-0.5*self.H[1] # thickness at X=0
 	
+        # use the quasistatic thickness (Amundson and Burton, 2018) for the 
+        # initial thickness profile
+        self.H = fsolve(self.__quasistatic_thickness, 2*self.param.d*np.ones(len(self.x_)))
+        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+        self.HL = self.param.d
+    
         # specify glacier terminus thickness, velocity, and calving rate, and 
         # use those values to determine the initial ice melange velocity 
         # (initially treated as a constant)
@@ -123,7 +129,7 @@ class glaciome:
         self.Ut = Ut
         self.Uc = Uc
         self.U0 = self.Uc*self.Ht/self.H0 # velocity is relative to the terminus
-        self.U = self.U0*np.ones(len(self.x)) + 0.5*self.U0*(1-self.x)
+        self.U = self.U0*np.ones(len(self.x))
         
         # specify some initial values for muW and gg; these will be adjusted
         # during the first diagnostic solve
@@ -142,8 +148,8 @@ class glaciome:
         
         self.transient = 1 # 1=transient simulation, 0=steady-state solve. Use steady-state solve with caution!
         
-        self.diagnostic(method='hybr')
-    
+        #self.diagnostic(method='hybr')
+        # self.calc_U_only()
     
     def nondimensionalize(self):
         '''
@@ -239,7 +245,37 @@ class glaciome:
         self.muW = result.x[2*len(self.x)-1:]
         
         self.redimensionalize()
+    
+    def __quasistatic_thickness(self,H):
+        '''
+        Used for determining the thickness profile assuming quasi-static flow, constant mu_w, and constant width
         
+        Parameters
+        ----------
+        H : initial guess for the thickness profile [m]
+
+        Returns
+        -------
+        res : need to determine H iteratively in order to solve implicit equation
+        '''
+    
+        mu_w = param.muW_ # coefficient of friction along the fjord walls
+        res = H - param.d*np.exp(mu_w*self.L*(1-self.x_)/self.W0 + (H-param.d)/(2*H))
+    
+        return(res)    
+        
+    def calc_U_only(self):
+        
+        result = root(self.__calc_U, self.U, method='hybr', options={'maxfev':int(1e6)})
+        
+        self.U = result.x
+        
+    def calc_gg_only(self):
+        
+        result = root(self.__calc_gg, self.gg, method='hybr', options={'maxfev':int(1e6)})
+        
+        self.gg = result.x
+    
     
     def prognostic(self, method='hybr'):
         '''
@@ -456,12 +492,14 @@ class glaciome:
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
+        
         resmuW = (Ubar - (self.U+self.Ut))
         # resmuW[self.muW==param.muW_max] = 0
         
         # combine the residuals into a single variable to be minimized
         res = np.concatenate((resU,resgg,resmuW))
       
+          
         return(res)
 
     
@@ -561,11 +599,12 @@ class glaciome:
         #nu = H**2/(gg + np.diff(self.U)/self.dx) # !!! corrected rheology (3-Dec-2023)
         
         a_left = nu[:-1]/(dx*L)**2    
-        a_left = np.append(a_left,-1/(dx*L))
+        a_left = np.append(a_left,-1)#/(dx*L))
         
         a = np.ones(len(U))/(dx*L)
         a[1:-1] = -(nu[1:] + nu[:-1])/(dx*L)**2
         a[0] = 1
+        a[-1] = 1
         
         a_right = nu[1:]/(dx*L)**2
         a_right = np.append(0,a_right)
@@ -580,7 +619,7 @@ class glaciome:
         
         # downstream boundary condition; longitudinal resistive stress equals
         # difference between glaciostatic and hydrostatic stresses
-        T = np.append(T,0.5*(1.5*self.gg[-1]-0.5*self.gg[-2]))
+        T = np.append(T,0*0.5*(1.5*self.gg[-1]-0.5*self.gg[-2]))
 
         res = np.matmul(D,U)-T
         
@@ -614,7 +653,7 @@ class glaciome:
         # is needed to keep the model from blowing up
         mu = (ee_chi/L+self.param.deps)/gg # option 1
         # mu = np.sqrt((ee_chi/L)**2 + self.param.deps**2)/gg # option 2
-	
+
         self.mu = mu
         
         g_loc = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
@@ -624,31 +663,32 @@ class glaciome:
         
         g_loc = g_loc*self.param.Lscale/self.param.Uscale # dimensionless
         
+        
         a_left = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2
         a = -(self.param.gamma * (self.param.A*self.param.d)**2 * 2/(L*dx)**2 + np.abs(mu-self.param.muS))    
         a_right = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2 
     
         # using linear interpolation to force g'=0 at X=L
-        a_left[-1] = -0.5   
-        a[-1] = 1.5
+        # a_left[-1] = -0.5   
+        # a[-1] = 1.5
         
         # setting dg'/dx = 0 at X=L; because we are using linear interpolation,
         # we don't need to worry about being on the grid vs on the staggered
         # grid (I don't think)
-        # a_left[-1] = -1/(L*dx)
-        # a[-1] = 1/(L*dx)
+        a_left[-1] = -1
+        a[-1] = 1
         
         # setting dg'/dx=0 at X=0; because we are using linear interpolation,
         # we don't need to worry about being on the grid vs on the staggered
         # grid (I don't think)
-        a[0] = -1/(L*dx) 
-        a_right[0] = 1/(L*dx)
+        a[0] = -1
+        a_right[0] = 1
     
         diagonals = [a_left,a,a_right]
         D = diags(diagonals,[-1,0,1]).toarray() 
         
         T = -np.abs(mu-self.param.muS) * g_loc
-    
+        
         T[0] = 0 
         T[-1] = 0
     
@@ -784,13 +824,39 @@ class glaciome:
         
         gg = np.linalg.solve(D,f) # solve for granular fluidity
         
-        u = cumtrapz(2*mu*gg, y, initial=0)
+        # u = cumtrapz(2*mu*gg, y, initial=0)
         
         # transform double integral using volterra integral equation
-        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
+        # u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
+       
+        
+        # begin TEST
+        a = np.zeros(len(y))
+        a[0] = 1
+        a[-1] = 1
+        
+        a_left = -np.ones(len(y)-1)
+        
+        a_right = np.ones(len(y)-1)
+        a_right[0] = 0
+        
+        diagonals = [a_left,a,a_right]
+        D = sparse.diags(diagonals,[-1,0,1]).toarray()
+        
+        f = mu*gg*2*dy
+        f[0] = 0
+        f[-1] = 0
+        
+        # boundary conditions: u(0) = 0; du/dy = 0 at y = W/2
+        
+        u = np.linalg.solve(D,f)
+        
+        u_mean = simpson(u,y,y[1])/y[-1]
+        # end TEST
         
         if dimensionless==True:
             u_mean = u_mean/self.param.Uscale
+        
         
         return(y,u,u_mean)
 
@@ -889,7 +955,7 @@ def basic_figure(n,dt):
     ax3 = plt.axes([left, bot+1.25*ygap, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [m]')
     ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
-    ax3.set_ylim([0, 1])
+    ax3.set_ylim([0, 5])
     ax3.set_xlim([0,xmax])
     
     ax4 = plt.axes([left+ax_width+xgap, bot+1.25*ygap, ax_width, ax_height])
