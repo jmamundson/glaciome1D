@@ -58,7 +58,7 @@ class parameters:
         self.A = 0.5 # dimensionless parameter
         self.b = 1e4 # dimensionless parameter
         self.muS = 0.3 # static yield coefficient
-        self.muW_ = 0.6 # initial guess for the effective coefficient of friction along the fjord walls
+        self.muW_ = 0.8 # initial guess for the effective coefficient of friction along the fjord walls
         self.muW_max = 100 # maximum value for muW 
         
 param = parameters()
@@ -113,15 +113,16 @@ class glaciome:
         # assume quasistatic flow (dU/dx=0), constant muW, and constant width
         # to determine initial thickness profile
         self.HL = self.param.d # thickness at X=L, set equal to grain size
-        self.H = 2*self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L)
+        self.H = self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L) # for some reason this initial geometry matters more than it should!
         self.H0 = 1.5*self.H[0]-0.5*self.H[1] # thickness at X=0
 	
-        # use the quasistatic thickness (Amundson and Burton, 2018) for the 
-        # initial thickness profile
-        self.H = fsolve(self.__quasistatic_thickness, 2*self.param.d*np.ones(len(self.x_)))
-        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
-        self.HL = self.param.d
+        # # use the quasistatic thickness (Amundson and Burton, 2018) for the 
+        # # initial thickness profile
+        # self.H = fsolve(self.__quasistatic_thickness, 2*self.param.d*np.ones(len(self.x_)))
+        # self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+        # self.HL = self.param.d
     
+        
         # specify glacier terminus thickness, velocity, and calving rate, and 
         # use those values to determine the initial ice melange velocity 
         # (initially treated as a constant)
@@ -155,7 +156,8 @@ class glaciome:
         '''
         Use scaling parameters to nondimensionalize the variables.        
         '''
-        if self.HL<=1:
+        
+        if self.HL <= 10:
             print('Variables are already dimensionless. Skipping.')
             
         else:
@@ -188,7 +190,8 @@ class glaciome:
         '''
         Use scaling parameters to re-dimensionalize the variables.        
         '''
-        if self.HL>1:
+        
+        if self.HL >= 10:
             print('Variables are already dimensional. Skipping.')
             
         else:
@@ -378,7 +381,7 @@ class glaciome:
         flag = int(0)
         #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
         while flag + flag_old < 2:
-            self.dt = 0.001
+            self.dt = 0.01
             
             self.prognostic()
             t += self.dt
