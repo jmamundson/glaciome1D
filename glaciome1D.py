@@ -1,4 +1,5 @@
-# if having trouble with solver, switch from 'hybr' to 'lm'
+# 1. If having trouble with solver, try using shorter time steps.
+# 2. The model can have trouble if the initial geometry is no good. Be very careful with this.
 
 import numpy as np
 from scipy import sparse
@@ -268,18 +269,6 @@ class glaciome:
         res = H - param.d*np.exp(mu_w*self.L*(1-self.x_)/self.W0 + (H-param.d)/(2*H))
     
         return(res)    
-        
-    def calc_U_only(self):
-        
-        result = root(self.__calc_U, self.U, method='hybr', options={'maxfev':int(1e6)})
-        
-        self.U = result.x
-        
-    def calc_gg_only(self):
-        
-        result = root(self.__calc_gg, self.gg, method='hybr', options={'maxfev':int(1e6)})
-        
-        self.gg = result.x
     
     
     def prognostic(self, method='hybr'):
@@ -601,7 +590,7 @@ class glaciome:
         
         # nu = H**2/np.sqrt(gg**2+self.param.deps**2)
         nu = H**2/gg
-        #nu = H**2/(gg + np.diff(self.U)/self.dx) # !!! corrected rheology (3-Dec-2023)
+        # nu = H**2/(gg + np.diff(self.U)/self.dx) # !!! corrected rheology (3-Dec-2023)
         
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1)#/(dx*L))
@@ -829,35 +818,34 @@ class glaciome:
         
         gg = np.linalg.solve(D,f) # solve for granular fluidity
         
-        # u = cumtrapz(2*mu*gg, y, initial=0)
+        u = cumtrapz(2*mu*gg, y, initial=0)
         
         # transform double integral using volterra integral equation
-        # u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
-       
+        u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
         
-        # begin TEST
-        a = np.zeros(len(y))
-        a[0] = 1
-        a[-1] = 1
+        # # BEGIN OLD
+        # a = np.zeros(len(y))
+        # a[0] = 1
+        # a[-1] = 1
         
-        a_left = -np.ones(len(y)-1)
+        # a_left = -np.ones(len(y)-1)
         
-        a_right = np.ones(len(y)-1)
-        a_right[0] = 0
+        # a_right = np.ones(len(y)-1)
+        # a_right[0] = 0
         
-        diagonals = [a_left,a,a_right]
-        D = sparse.diags(diagonals,[-1,0,1]).toarray()
+        # diagonals = [a_left,a,a_right]
+        # D = sparse.diags(diagonals,[-1,0,1]).toarray()
         
-        f = mu*gg*2*dy
-        f[0] = 0
-        f[-1] = 0
+        # f = 2*mu*gg*2*dy
+        # f[0] = 0
+        # f[-1] = 0
         
-        # boundary conditions: u(0) = 0; du/dy = 0 at y = W/2
+        # # boundary conditions: u(0) = 0; du/dy = 0 at y = W/2
         
-        u = np.linalg.solve(D,f)
+        # u = np.linalg.solve(D,f)
         
-        u_mean = simpson(u,y,y[1])/y[-1]
-        # end TEST
+        # u_mean = simpson(u,y,y[1])/y[-1]
+        # # END TEST
         
         if dimensionless==True:
             u_mean = u_mean/self.param.Uscale
