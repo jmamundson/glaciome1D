@@ -238,4 +238,4 @@ ax2.plot(glacier_x,glacier_y,'k')
 ax2.fill(np.array([-2000,17000,17000,-2000]),np.array([glacier_y[0],glacier_y[0],-600,-600]),'oldlace',edgecolor='k')
 ax2.plot(np.array([data.L,100000])*1e-3,np.array([0,0]),'k')
     
-plt.savefig('fig_steady-state_profiles.pdf',format='pdf',dpi=300)
+plt.savefig('fig-steady-state_profiles.pdf',format='pdf',dpi=300)
