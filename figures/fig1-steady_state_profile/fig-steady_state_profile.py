@@ -51,7 +51,7 @@ import pickle
 constant = constants()
 
 #%%
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
@@ -61,7 +61,7 @@ if run_simulations == 'y':
         file.close()
     
     else:
-        n_pts = 11 # number of grid points
+        n_pts = 21 # number of grid points
         L = 1e4 # ice melange length
         Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
         Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
@@ -76,14 +76,14 @@ if run_simulations == 'y':
         
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
         data.steadystate()
-        data.save('steady-state_Bdot_-0.80_lm.pickle')
+        data.save('steady-state_Bdot_-0.80.pickle')
     
-    #data.refine_grid(11)
-    data.transient = 1
-    data.B = 0
-    data.Uc = 0
-    data.steadystate()
-    data.save('quasistatic_Bdot_-0.80_lm.pickle')
+    
+    # data.transient = 1
+    # data.B = 0
+    # data.Uc = 0
+    # data.steadystate()
+    # data.save('quasistatic_Bdot_-0.80.pickle')
         
 
         
@@ -146,7 +146,7 @@ def set_up_figure():
     ax3 = plt.axes([left, bot, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [km]')
     ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
-    ax3.set_ylim([0, 2])
+    ax3.set_ylim([0, 5])
     ax3.set_xlim([0,xmax])
     txt = ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
@@ -206,7 +206,7 @@ def plot_figure(data, axes, color_id, linestyle):
     chi = np.array([0,0.25,0.5,0.75,1])
     
     for j in np.arange(0,len(chi)):
-        y, u_transverse, u_mean = data.transverse(chi[j])
+        y, u_transverse, u_mean = data.transverse(chi[j],dimensionless=False)
         U_ind = np.interp(0.5,data.x,data.U)
     
         u_slip = U_ind-u_mean#np.mean(u_transverse)
@@ -217,11 +217,11 @@ def plot_figure(data, axes, color_id, linestyle):
         ax5.legend(('$\chi=0$','$\chi=0.25$','$\chi=0.50$','$\chi=0.75$','$\chi=1$'))
 
 #%%
-files = sorted(glob.glob('./*lm.pickle'))
+files = sorted(glob.glob('./*.pickle'))
 #file = files[1]
 
 axes, color_id = set_up_figure()
-linestyle = ['--','-']
+linestyle = ['-','--']
 for j in np.arange(len(files)-1, -1, -1):
     with open(files[j], 'rb') as file:
         data = pickle.load(file)
@@ -238,4 +238,4 @@ ax2.plot(glacier_x,glacier_y,'k')
 ax2.fill(np.array([-2000,17000,17000,-2000]),np.array([glacier_y[0],glacier_y[0],-600,-600]),'oldlace',edgecolor='k')
 ax2.plot(np.array([data.L,100000])*1e-3,np.array([0,0]),'k')
     
-plt.savefig('fig_steady-state_profiles_lm.pdf',format='pdf',dpi=300)
+plt.savefig('fig_steady-state_profiles.pdf',format='pdf',dpi=300)

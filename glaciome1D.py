@@ -152,9 +152,11 @@ class glaciome:
         
         self.transient = 1 # 1=transient simulation, 0=steady-state solve. Use steady-state solve with caution!
         
-        #self.diagnostic(method='hybr')
-        # self.calc_U_only()
-    
+        print('Initializing model by solving diagnostic equations.')
+        self.diagnostic(method='hybr')
+        print('Done initializing model.')
+        
+        
     def nondimensionalize(self):
         '''
         Use scaling parameters to nondimensionalize the variables.        
@@ -251,6 +253,7 @@ class glaciome:
         self.muW = result.x[2*len(self.x)-1:]
         
         self.redimensionalize()
+    
     
     def __quasistatic_thickness(self,H):
         '''
@@ -372,7 +375,7 @@ class glaciome:
         flag = int(0)
         #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
         while flag + flag_old < 2:
-            self.dt = 0.01
+            self.dt = 0.001
             
             self.prognostic()
             t += self.dt
@@ -435,21 +438,19 @@ class glaciome:
             
             k += 1
         
-        # self.transient = 0
-        # print('Steady-state solve.')
-        # self.prognostic()
-        # # plot_basic_figure(self, axes, color_id, 999)
-        # self.transient = 1    
-        # print('End steady-state solve.')
-        # print('')
+        self.transient = 0
+        print('Steady-state solve.')
+        self.prognostic()
+        # plot_basic_figure(self, axes, color_id, 999)
+        self.transient = 1    
+        print('End steady-state solve.')
+        print('')
         
         
     def save(self,file_name):
         '''
         Save the model output.
         '''
-        if not os.path.exists('output'): 
-            os.mkdir('output')
         
         with open(file_name, 'wb') as file:
             pickle.dump(self, file)
@@ -662,7 +663,7 @@ class glaciome:
         a = -(self.param.gamma * (self.param.A*self.param.d)**2 * 2/(L*dx)**2 + np.abs(mu-self.param.muS))    
         a_right = self.param.gamma * (self.param.A*self.param.d)**2 * np.ones(len(mu)-1)/(L*dx)**2 
     
-        # using linear interpolation to force g'=0 at X=L
+        # using linear interpolation to force g'=0 at X=L; if you use this, strain rate should be 0 at x=L, not at half a grid point back
         # a_left[-1] = -0.5   
         # a[-1] = 1.5
         
