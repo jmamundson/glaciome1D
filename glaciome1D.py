@@ -116,6 +116,8 @@ class glaciome:
         self.H = self.HL*np.exp(self.param.muW_/self.W0*(1-self.x_)*self.L) # for some reason this initial geometry matters more than it should!
         self.H0 = 1.5*self.H[0]-0.5*self.H[1] # thickness at X=0
 	
+        
+    
         # # use the quasistatic thickness (Amundson and Burton, 2018) for the 
         # # initial thickness profile
         # self.H = fsolve(self.__quasistatic_thickness, 2*self.param.d*np.ones(len(self.x_)))

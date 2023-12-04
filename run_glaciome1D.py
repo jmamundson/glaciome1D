@@ -50,7 +50,7 @@ data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
 data.diagnostic()
 plot_basic_figure(data, axes, color_id, 0)
 data.dt = 0.01
-#data.steadystate()
+# data.steadystate()
 
 j = 1
 while j<50:
