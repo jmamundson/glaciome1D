@@ -51,7 +51,7 @@ import pickle
 constant = constants()
 
 #%%
-run_simulations = 'n'
+run_simulations = 'y'
 
 if run_simulations == 'y':
     
@@ -75,7 +75,8 @@ if run_simulations == 'y':
         W_fjord = Wt + 0/10000*X_fjord
         
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.steadystate()
+        data.diagnostic()
+        data.steadystate(method='lm')
         data.save('steady-state_Bdot_-0.80.pickle')
     
     

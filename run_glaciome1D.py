@@ -5,6 +5,7 @@ import numpy as np
 
 import os
 
+# from glaciome1D_dimensional import glaciome, basic_figure, plot_basic_figure, constants
 from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants
 
 from scipy.integrate import trapz
@@ -53,11 +54,15 @@ data.dt = 0.01
 # data.steadystate()
 
 j = 1
-while j<50:
+while j<2:
     print(j)
     data.prognostic()
     plot_basic_figure(data, axes, color_id, 50)
     j+=1
+
+# data.steadystate()
+# plot_basic_figure(data, axes, color_id, 100)
+
 
 #%%
 data.diagnostic()
