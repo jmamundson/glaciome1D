@@ -54,14 +54,14 @@ data.dt = 0.01
 # data.steadystate()
 
 j = 1
-while j<2:
+while j<50:
     print(j)
-    data.prognostic()
+    data.prognostic(method='lm')
     plot_basic_figure(data, axes, color_id, 50)
     j+=1
 
-# data.steadystate()
-# plot_basic_figure(data, axes, color_id, 100)
+data.steadystate(method='lm')
+plot_basic_figure(data, axes, color_id, 100)
 
 
 #%%

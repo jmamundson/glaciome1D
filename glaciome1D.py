@@ -51,7 +51,7 @@ class parameters:
         self.Tscale = self.Lscale/self.Uscale # time scale [yr]
         self.gamma = self.Hscale**2/self.Lscale**2
         
-        self.deps = 0.1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
+        self.deps = 1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 # dimensionless parameter
         self.b = 1e4 # dimensionless parameter
@@ -140,7 +140,7 @@ class glaciome:
         self.g_loc = self.param.deps/self.muW[0]*np.ones(len(self.H))
         
         # set the specific mass balance rate (treated as spatially constant)
-        self.B = -0.8*self.constants.daysYear 
+        self.B = -0.6*self.constants.daysYear 
         
         # set time step and initial time
         self.dt = dt
@@ -585,8 +585,8 @@ class glaciome:
         H_ = (H[:-1]+H[1:])/2 # thickness on the grid, excluding the first and last grid points
         W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
         
-        nu = H**2/gg
-        # nu = H**2/(gg + np.diff(self.U)/self.dx) # !!! corrected rheology (3-Dec-2023)
+        # nu = H**2/gg
+        nu = H**2/(gg - np.diff(self.U)/(self.dx*self.L)) # !!! corrected rheology (3-Dec-2023)
 
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1)
@@ -645,7 +645,14 @@ class glaciome:
 
         self.mu = mu
         
-        g_loc = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
+        # np.diff(self.U)/np.diff(self.x*self.L)
+        
+        exx = np.diff(self.U)/(self.dx*self.L)
+        gamma = 1 + exx/(self.gg-exx)
+        
+        g_loc = constant.secsYear*np.sqrt(self.pressure(H)*gamma/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
+        # g_loc = constant.secsYear*np.sqrt((self.pressure(H)+sigma_xx)/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
+        
         g_loc[g_loc<0] = 0
         
         self.g_loc = g_loc # dimensional [a^{-1}]
@@ -813,7 +820,7 @@ class glaciome:
         
         gg = np.linalg.solve(D,f) # solve for granular fluidity
 
-	# NEW APPROACH
+        	# NEW APPROACH: make this work???
         # u = cumtrapz(2*mu*gg, y, initial=0)
         # transform double integral using volterra integral equation
         # u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
