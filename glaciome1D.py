@@ -313,7 +313,157 @@ class glaciome:
         self.t += self.dt
         
         self.redimensionalize()
+
+    def diagnostic_shear_only(self, method='lm'):
+        '''
         
+
+        Parameters
+        ----------
+        method : TYPE, optional
+            DESCRIPTION. The default is 'lm'.
+
+        Returns
+        -------
+        None.
+
+        '''
+        
+        self.nondimensionalize()
+        
+        self.gg = 0*self.gg
+        self.U = self.U0*np.ones(len(self.U))
+        
+        if method=='hybr':
+            result = root(self.__solve_diagnostic_shear_only, self.muW, method=method, tol=1e-12, options={'maxfev':int(1e6)})
+        elif method=='lm':
+            result = root(self.__solve_diagnostic_shear_only, self.muW, method=method, tol=1e-12, options={'maxiter':int(1e6)})
+        
+        self.muW = result.x
+        
+        self.redimensionalize()
+        
+        
+    def __solve_diagnostic_shear_only(self, muW):
+        
+        self.muW = muW
+        
+        # for each iteration, muW is used to produce a transverse velocity 
+        # profile; then the average velocity of the profile is compared to U
+        tmp = [self.transverse(x) for x in self.x]
+        Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
+        
+        res = (Ubar - (self.U+self.Ut))
+        res[self.muW==param.muW_max] = 0
+        
+        
+        return(res)
+    
+    
+    def prognostic_shear_only(self, method='lm'): # call this something else
+        '''
+        Evolve the model assumming that dU/dx = 0.
+
+        Returns
+        -------
+        None.
+
+        '''
+        
+        self.gg = 0*self.gg
+        self.U = self.U0*np.ones(len(self.U))
+        
+        self.nondimensionalize()
+        
+        # The previous thickness and length are required.
+        H_prev = self.H
+        L_prev = self.L
+        self.X[0] += (self.Ut-self.Uc)*self.dt # use an explicit time step to find new position X0
+        
+        muWHL = np.concatenate((self.muW, self.H, [self.L])) # starting point for solving the differential equations
+       
+        if method=='hybr':
+            result = root(self.__solve_prognostic_shear_only, muWHL, (H_prev, L_prev), method=method, tol=1e-12, options={'maxfev':int(1e6)})
+        elif method=='lm':
+            result = root(self.__solve_prognostic_shear_only, muWHL, (H_prev, L_prev), method=method, tol=1e-12, options={'maxiter':int(1e6)})
+        
+        # print('status: ' + str(result.status))
+        # print('success: ' + str(result.success))
+        # print('message: ' + result.message)
+        # print('')
+        
+        self.muW = result.x[:len(self.x)]
+        self.H = result.x[len(self.x):-1]
+        self.L = result.x[-1]
+        
+        self.X = self.X*self.param.Lscale
+        self.X_ = self.X_*self.param.Lscale
+        
+        # Update the time stored within the model object.
+        self.t += self.dt
+        
+        self.redimensionalize()
+        
+        
+            
+    def __solve_prognostic_shear_only(self, muWHL, H_prev, L_prev):
+        '''
+        
+
+        Parameters
+        ----------
+        H_prev : TYPE
+            DESCRIPTION.
+        L_prev : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        '''
+
+        self.muW = muWHL[:len(self.x)]
+        self.muW[self.muW>self.param.muW_max] = self.param.muW_max
+        self.H = muWHL[len(self.x):-1]
+        self.L = muWHL[-1]        
+
+
+        self.dLdt = self.transient*(self.L-L_prev)/self.dt
+    
+        # Update the dimensional grid and the width
+        self.X = self.x*self.L # !!! + self.X[0]
+        self.X_ = (self.X[:-1]+self.X[1:])/2
+        self.W = self.width_interpolator(self.X_)
+    
+        # update endpoints, since W and H are on the staggered grid
+        self.W0 = self.width_interpolator(self.X[0])
+        self.WL = self.width_interpolator(self.X[-1])
+        self.H0 = 1.5*self.H[0]-0.5*self.H[1]
+        self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
+        
+        self.U0 = self.Ut*self.Ht/self.H0
+        self.U = self.U0*np.ones(len(self.U))
+        
+        # for each iteration, muW is used to produce a transverse velocity 
+        # profile; then the average velocity of the profile is compared to U
+        tmp = [self.transverse(x) for x in self.x]
+        Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
+        
+        resmuW = (Ubar - (self.U+self.Ut))
+        resmuW[self.muW==self.param.muW_max] = 0
+        
+        # compute residual of mass continuity equation
+        resH = self.__calc_H(self.H, H_prev) 
+        
+        # require H_L = d
+        resHc = (1.5*self.H[-1]-0.5*self.H[-2]-self.param.d)
+        
+        # append residuals into single variable to be minimized
+        res = np.concatenate((resmuW, resH, [resHc]))  
+        
+        return(res)
+    
         
     def regrid(self, n_pts):
         '''
