@@ -51,7 +51,7 @@ class parameters:
         self.Tscale = self.Lscale/self.Uscale # time scale [yr]
         self.gamma = self.Hscale**2/self.Lscale**2
         
-        self.deps = 1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
+        self.deps = 0.1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 # dimensionless parameter
         self.b = 1e4 # dimensionless parameter
@@ -140,7 +140,7 @@ class glaciome:
         self.g_loc = self.param.deps/self.muW[0]*np.ones(len(self.H))
         
         # set the specific mass balance rate (treated as spatially constant)
-        self.B = -0.6*self.constants.daysYear 
+        self.B = -0.7*self.constants.daysYear 
         
         # set time step and initial time
         self.dt = dt
@@ -235,9 +235,9 @@ class glaciome:
         UggmuW = np.concatenate((self.U,self.gg,self.muW)) # starting point for solving the differential equations
         
         if method == 'hybr':
-            result = root(self.__solve_diagnostic, UggmuW, method=method, tol=1e-12, options={'maxfev':int(1e6)})#, 'xtol':1e-12})
+            result = root(self.__solve_diagnostic, UggmuW, method=method, options={'maxfev':int(1e6)})#, 'xtol':1e-12})
         elif method == 'lm':
-            result = root(self.__solve_diagnostic, UggmuW, method=method, tol=1e-12, options={'maxiter':int(1e6)})#, 'xtol':1e-12})
+            result = root(self.__solve_diagnostic, UggmuW, method=method, options={'maxiter':int(1e6)})#, 'xtol':1e-12})
         
         
         if result.success != 0:
@@ -290,9 +290,9 @@ class glaciome:
         UggmuWHL = np.concatenate((self.U,self.gg,self.muW,self.H,[self.L])) # starting point for solving the differential equations
         
         if method=='hybr':
-            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, tol=1e-12, options={'maxfev':int(1e6)})
+            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, options={'maxfev':int(1e6)})
         elif method=='lm':
-            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, tol=1e-12, options={'maxiter':int(1e6)})
+            result = root(self.__solve_prognostic, UggmuWHL, (H_prev, L_prev), method=method, options={'maxiter':int(1e6)})
         
         if result.success != 1:
             print('status: ' + str(result.status))
@@ -353,7 +353,7 @@ class glaciome:
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
-        res = (Ubar - (self.U+self.Ut))
+        res = (Ubar - (self.U+self.Ut-self.Uc))
         res[self.muW==param.muW_max] = 0
         
         
@@ -450,7 +450,7 @@ class glaciome:
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
-        resmuW = (Ubar - (self.U+self.Ut))
+        resmuW = (Ubar - (self.U+self.Ut-self.Uc))
         resmuW[self.muW==self.param.muW_max] = 0
         
         # compute residual of mass continuity equation
@@ -635,7 +635,7 @@ class glaciome:
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
         
-        resmuW = (Ubar - (self.U+self.Ut))
+        resmuW = (Ubar - (self.U+self.Ut-self.Uc))
         # resmuW[self.muW==param.muW_max] = 0
         
         # combine the residuals into a single variable to be minimized
@@ -693,7 +693,7 @@ class glaciome:
         tmp = [self.transverse(x) for x in self.x]
         Ubar = np.array([tmp[j][2] for j in range(len(tmp))])
         
-        resmuW = (Ubar - (self.U+self.Ut)) 
+        resmuW = (Ubar - (self.U+self.Ut-self.Uc)) 
         # resmuW[self.muW==self.param.muW_max] = 0
         
         # compute residual of mass continuity equation

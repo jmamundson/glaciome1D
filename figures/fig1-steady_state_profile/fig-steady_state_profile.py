@@ -51,7 +51,7 @@ import pickle
 constant = constants()
 
 #%%
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
@@ -75,16 +75,16 @@ if run_simulations == 'y':
         W_fjord = Wt + 0/10000*X_fjord
         
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.diagnostic()
+        data.diagnostic(method='lm')
         data.steadystate(method='lm')
-        data.save('steady-state_Bdot_-0.80.pickle')
+        data.save('steady-state_Bdot_-0.70.pickle')
     
     
-    # data.transient = 1
-    # data.B = 0
-    # data.Uc = 0
-    # data.steadystate()
-    # data.save('quasistatic_Bdot_-0.80.pickle')
+    data.transient = 1
+    data.B = 0
+    data.Uc = 0
+    data.steadystate(method='lm')
+    data.save('quasistatic_Bdot_-0.70.pickle')
         
 
         
@@ -218,11 +218,11 @@ def plot_figure(data, axes, color_id, linestyle):
         ax5.legend(('$\chi=0$','$\chi=0.25$','$\chi=0.50$','$\chi=0.75$','$\chi=1$'))
 
 #%%
-files = sorted(glob.glob('./*.pickle'))
+files = sorted(glob.glob('./*70.pickle'))
 #file = files[1]
 
 axes, color_id = set_up_figure()
-linestyle = ['-','--']
+linestyle = ['--','-']
 for j in np.arange(len(files)-1, -1, -1):
     with open(files[j], 'rb') as file:
         data = pickle.load(file)
