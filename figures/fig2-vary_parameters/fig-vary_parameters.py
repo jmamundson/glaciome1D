@@ -46,7 +46,7 @@ constant = constants()
 
 
 #%% 
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
@@ -56,8 +56,8 @@ if run_simulations == 'y':
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
     Ht = 600 # terminus thickness
     n = 101 # number of time steps
-    dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
-
+    dt = 0.01
+    
     # specifying fjord geometry
     X_fjord = np.linspace(-200e3,200e3,101)
     Wt = 4000
@@ -65,7 +65,7 @@ if run_simulations == 'y':
     
     file_extensions = ['','_varymuS','_varyd','_varyb','_varyA']
 
-    for j in np.arange(1,5):    
+    for j in np.arange(2,3):    
         # file = open('steady-state_Bdot_-0.80_31pts.pickle','rb')
         # data = pickle.load(file)
         # file.close()
@@ -82,6 +82,10 @@ if run_simulations == 'y':
             d = 10
             print('d: ' + "{:.03f}".format(d))
             data.param.d = d
+            data.H -= 15
+            data.H0 = 1.5*data.H[-1] - 0.5*data.H[-2]
+            data.HL = 1.5*data.H[0] - 0.5*data.H[1]
+            data.dt = 0.001
             
         if j==3:
             b = 5e4
@@ -153,7 +157,7 @@ def set_up_figure():
     ax3 = plt.axes([left, bot, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [km]')
     ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
-    ax3.set_ylim([0, 2])
+    ax3.set_ylim([0, 10])
     ax3.set_xlim([0,xmax])
     txt = ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
@@ -215,13 +219,13 @@ def plot_figure(data, axes, color, linestyle, j, zorder):
 
 
     ax1, ax2, ax3, ax4, ax5 = axes
-    ax1.plot(X*1e-3,(U+data.Ut)/constant.daysYear,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
+    ax1.plot(X*1e-3,(U+(data.Ut-data.Uc))/constant.daysYear,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     ax2.plot(np.append(X_,X_[::-1])*1e-3,np.append(-constant.rho/constant.rho_w*H,(1-constant.rho/constant.rho_w)*H[::-1]),color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     ax3.plot(X_*1e-3,gg,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     ax4.plot(X*1e-3,muW,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     
     
-    y, u_transverse, u_mean = data.transverse(0.5) 
+    y, u_transverse, u_mean = data.transverse(0.5, dimensionless=False) 
     
     U_ind = np.interp(0.5,data.x,data.U)
     u_slip = U_ind-np.mean(u_transverse)
@@ -261,14 +265,14 @@ for j in np.arange(0,len(files)):
         else:
             plot_figure(data,axes,color_id[j],linestyle[0],j,1)
         
-        if j==1:
+        if j==3:
             print(data.L)
             axes[1].plot(np.array([data.L/1000,20]),np.array([0,0]),color='k')
 
         
 
 
-axes[4].legend(['default',r'$d=10$ m',r'$b=5\times 10^4$',r'$A=5$',r'$\mu_s=0.25$'],framealpha=1)
+axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.25$'],framealpha=1)
 
 ax1, ax2, ax3, ax4, ax5 = axes
 glacier_x = np.array([-1000,0,0,-1000])

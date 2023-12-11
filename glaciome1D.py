@@ -161,8 +161,9 @@ class glaciome:
         Use scaling parameters to nondimensionalize the variables.        
         '''
         
-        if self.HL <= 10:
+        if self.L <= 100:
             print('Variables are already dimensionless. Skipping.')
+            
             
         else:
             self.H = self.H/self.param.Hscale
@@ -195,8 +196,9 @@ class glaciome:
         Use scaling parameters to re-dimensionalize the variables.        
         '''
         
-        if self.HL >= 10:
+        if self.L >= 100:
             print('Variables are already dimensional. Skipping.')
+            
             
         else:
             self.H = self.H*self.param.Hscale
