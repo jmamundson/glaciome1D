@@ -1,5 +1,6 @@
-# 1. If having trouble with solver, try using shorter time steps.
+# 1. If having trouble with solver, try using shorter time steps or using 'lm' instead of 'hybr'.
 # 2. The model can have trouble if the initial geometry is no good. Be very careful with this.
+# 3. The steady-state solve doesn't seem to work very well.
 
 import numpy as np
 from scipy import sparse
@@ -51,7 +52,7 @@ class parameters:
         self.Tscale = self.Lscale/self.Uscale # time scale [yr]
         self.gamma = self.Hscale**2/self.Lscale**2
         
-        self.deps = 0.1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
+        self.deps = 1*self.Lscale/self.Uscale # finite strain rate parameter [dimensionless]
         self.d = 25 # characteristic iceberg size [m]
         self.A = 0.5 # dimensionless parameter
         self.b = 1e4 # dimensionless parameter
@@ -519,10 +520,10 @@ class glaciome:
         
         print('Solving prognostic equations.')
         
-        flag_old = int(0)
+        
         flag = int(0)
         #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
-        while flag + flag_old < 2:
+        while flag < 3:
             
             self.prognostic(method=method)
             t += self.dt
@@ -563,13 +564,8 @@ class glaciome:
                 
                 dLdt = (self.L-L_old)/(t-t_old)
                 
-                
-                flag_old = flag
-                
                 if np.abs(dLdt) < 10:
-                    flag = int(1)
-                else:
-                    flag = (0)
+                    flag += 1
                 
                
                 
@@ -585,13 +581,13 @@ class glaciome:
             
             k += 1
         
-        self.transient = 0
-        print('Steady-state solve.')
-        self.prognostic()
-        # plot_basic_figure(self, axes, color_id, 999)
-        self.transient = 1    
-        print('End steady-state solve.')
-        print('')
+        # self.transient = 0
+        # print('Steady-state solve.')
+        # self.prognostic()
+        # # plot_basic_figure(self, axes, color_id, 999)
+        # self.transient = 1    
+        # print('End steady-state solve.')
+        # print('')
         
         
     def save(self,file_name):

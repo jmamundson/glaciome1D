@@ -29,7 +29,7 @@ import matplotlib.patheffects as PathEffects
 import sys
 
 sys.path.append('/home/jason/projects/glaciome/glaciome1D')
-from glaciome1D import constants, glaciome
+from glaciome1D import constants, glaciome, basic_figure, plot_basic_figure
 
 import os
 
@@ -50,47 +50,46 @@ import pickle
 
 constant = constants()
 
-#%%
+#%% 
 run_simulations = 'n'
 
 if run_simulations == 'y':
     
+    size = ['small', 'medium', 'large']
+    terminus_velocity = np.array([0.6e4,0.7e4,0.8e4])
+    calving_rate = terminus_velocity
+    terminus_width = np.array([4000,5000,6000])
+    terminus_thickness = np.array([600,700,800])
     
-    n_pts = 21 # number of grid points
-    L = 1e4 # ice melange length
-    Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
-    Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
-    Ht = 600 # terminus thickness
-    n = 101 # number of time steps
-    dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
-
-    # specifying fjord geometry
-    X_fjord = np.linspace(-200e3,200e3,101)
-    Wt = 4000
-    W_fjord = Wt + 0/10000*X_fjord
     
-    # first run to steady state
-    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-    data.B = -0.6*data.constants.daysYear
-    data.diagnostic()
-    data.steadystate(method='hybr')
-    data.regrid(21)
-    data.save('steady-state_Bdot_-0.60.pickle')
     
-    # then turn off calving and melting
-    data.transient = 1
-    data.B = 0
-    data.Uc = 0
-    data.steadystate(method='hybr')
-    data.save('quasistatic_Bdot_-0.60.pickle')
+    for j in np.arange(2,len(size)):
+    
+        n_pts = 21 # number of grid points
+        L = 1e4 # ice melange length
+        Ut = terminus_velocity[j] # glacier terminus velocity [m/a]; treated as a constant
+        Uc = calving_rate[j] # glacier calving rate [m/a]; treated as a constant
+        Ht = terminus_thickness[j] # terminus thickness
+        dt = 0.001
         
-
+        # specifying fjord geometry
+        X_fjord = np.linspace(-200e3,200e3,101)
         
+        W_fjord = terminus_width[j] + 0/10000*X_fjord
         
+        data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
+        data.B = -0.8*constant.daysYear
+        data.diagnostic()
+        data.steadystate(method='hybr')
+        
+        data.save('steady-state_' + size[j] + '.pickle')
 
 
+    
+    
 
-#%%    
+
+#%%   
 def set_up_figure():
     '''
     Sets up the basic figure for plotting. 
@@ -100,7 +99,7 @@ def set_up_figure():
     axes handles ax1, ax2, ax3, ax4, ax5, and ax_cbar for the 5 axes and colorbar
     '''
     
-    color_id = np.linspace(0,1,5)
+    color_id = np.linspace(0,1,3)
 
 
     cm = 1/2.54
@@ -118,7 +117,7 @@ def set_up_figure():
     
     
     xmax = 20
-    vmax = 150
+    vmax = 200
     
     text_pos_scale = 6.5/3.8
     
@@ -127,17 +126,15 @@ def set_up_figure():
     ax1.set_ylabel('Speed [m/d]')
     ax1.set_ylim([0,vmax])
     ax1.set_xlim([0,xmax])
-    ax1.set_yticks(np.linspace(0,vmax,4,endpoint=True))
-    txt = ax1.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'a',transform=ax1.transAxes,va='top',ha='left')
-    txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
-
+    ax1.set_yticks(np.linspace(0,300,4,endpoint=True))
+    ax1.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'a',transform=ax1.transAxes,va='top',ha='left')
+    
     
     ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+ygap, ax_width, ax_height])
     ax2.set_xlabel('Longitudinal coordinate [km]')
     ax2.set_ylabel('Elevation [m]')
-    ax2.set_ylim([-300, 100])
+    ax2.set_ylim([-400, 100])
     ax2.set_xlim([0,xmax])
-    ax2.set_yticks(np.linspace(-300,100,5,endpoint=True))
     txt = ax2.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'b',transform=ax2.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
     
@@ -149,7 +146,8 @@ def set_up_figure():
     ax3.set_xlim([0,xmax])
     txt = ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
-
+    #ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
+    
     
     ax4 = plt.axes([left+ax_width+xgap, bot, ax_width, ax_height])
     ax4.set_xlabel('Longitudinal coordinate [km]')
@@ -161,12 +159,10 @@ def set_up_figure():
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
     ax5.set_ylabel(r'Speed [m/d]')
-    ax5.set_xlim([-2.4,2.4])
-    ax5.set_ylim([0,vmax])
-    ax5.set_yticks(np.linspace(0,vmax,4,endpoint=True))
+    ax5.set_xlim([-2.8,2.8])
+    ax5.set_ylim([0,vmax+50])
     txt = ax5.text(0.05*text_pos_scale,1-0.05*6.5/(2*3.8+2),'e',transform=ax5.transAxes,va='top',ha='left')
-    txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
-
+    
 
     axes = (ax1, ax2, ax3, ax4, ax5)
     
@@ -187,54 +183,72 @@ def plot_figure(data, axes, color_id, linestyle):
     X_ = np.concatenate(([data.X[0]],data.X_,[data.X[-1]]))
     U = data.U
     H = np.concatenate(([data.H0],data.H,[1.5*data.H[-1]-0.5*data.H[-2]]))
+    W = data.W
     gg = np.concatenate(([1.5*data.gg[0]-0.5*data.gg[1]],data.gg,[1.5*data.gg[-1]-0.5*data.gg[-2]]))
-    muW = data.muW# np.concatenate(([3*data.muW[0]-3*data.muW[1]+data.muW[2]],data.muW,[3*data.muW[-1]-3*data.muW[-2]+data.muW[-3]]))
+    muW = data.muW
+    
+    W = data.W
     
     X = X-X[0]
     X_ = X_-X_[0]
 
 
     ax1, ax2, ax3, ax4, ax5 = axes
-    ax1.plot(X*1e-3,(U+data.Ut-data.Uc)/constant.daysYear,color=plt.cm.viridis(color_id[0]),linestyle=linestyle)
+    ax1.plot(X*1e-3,U/constant.daysYear,color=plt.cm.viridis(color_id[0]),linestyle=linestyle)
     ax2.plot(np.append(X_,X_[::-1])*1e-3,np.append(-constant.rho/constant.rho_w*H,(1-constant.rho/constant.rho_w)*H[::-1]),color=plt.cm.viridis(color_id[0]),linestyle=linestyle)
     ax3.plot(X_*1e-3,gg,color=plt.cm.viridis(color_id[0]),linestyle=linestyle)
     ax4.plot(X*1e-3,muW,color=plt.cm.viridis(color_id[0]),linestyle=linestyle)
     
     
+    # compute transverse velocity profile
+    # need to clean this up later
+    W = data.W[0]
     
-    chi = np.array([0,0.25,0.5,0.75,1])
+    muW = data.muW[[0,10,-1]]
+    U = data.U[[1,11,-2]]
     
-    for j in np.arange(0,len(chi)):
+    H= np.concatenate(([(data.H[0]+data.H[1])/2], [(data.H[10]+data.H[11])/2], [(data.H[-1]+data.H[-2])/2]))  
+    
+    
+    chi = np.array([0,0.5,1])
+    
+    for j in np.arange(0,3):#len(Hd)):
         y, u_transverse, u_mean = data.transverse(chi[j],dimensionless=False)
         U_ind = np.interp(chi[j],data.x,data.U)
-        
+    
         u_slip = U_ind-u_mean#np.mean(u_transverse)
         u_transverse += u_slip + (data.Ut - data.Uc)
         
         ax5.plot(np.append(y-y[-1],y)*1e-3,np.append(u_transverse,u_transverse[-1::-1])/constant.daysYear,color=cmap(color_id[j]),linestyle=linestyle)
 
-        ax5.legend(('$\chi=0$','$\chi=0.25$','$\chi=0.50$','$\chi=0.75$','$\chi=1$'))
+        ax5.legend(('$\chi=0.0$','$\chi=0.5$','$\chi=1.0$'))
 
 #%%
 files = sorted(glob.glob('./*.pickle'))
 #file = files[1]
-
+F = np.zeros(len(files))
+Q = np.zeros(len(files))
 axes, color_id = set_up_figure()
-linestyle = ['--','-']
-for j in np.arange(len(files)-1, -1, -1):
+linestyle = ['dotted','--','-']
+for j in np.arange(0,len(files)):
     with open(files[j], 'rb') as file:
         data = pickle.load(file)
         file.close()
-    
+        
+    # data.B = -0.8*data.constants.daysYear
+    # data.dt = 0.01
+    # data.steadystate(method='hybr')    
+    # data.save(files[j])
+        
     plot_figure(data,axes,color_id,linestyle[j])
-    if j==1:
-        L=data.L
+    if j==0:
+        axes[1].plot(np.array([data.L,20000])*1e-3,np.array([0,0]),'k')
         
 ax1, ax2, ax3, ax4, ax5 = axes
-# glacier_x = np.array([-1000,0,0,-1000])
-# glacier_y = np.array([-data.Ht*constant.rho/constant.rho_w,-data.Ht*constant.rho/constant.rho_w,data.Ht*(1-constant.rho/constant.rho_w),data.Ht*(1-constant.rho/constant.rho_w)+5])
-# ax2.plot(glacier_x,glacier_y,'k')
-# ax2.fill(np.array([-2000,17000,17000,-2000]),np.array([glacier_y[0],glacier_y[0],-600,-600]),'oldlace',edgecolor='k')
-ax2.plot(np.array([data.L,100000])*1e-3,np.array([0,0]),'k')
+#glacier_x = np.array([-1000,0,0,-1000])
+#glacier_y = np.array([-data.Ht*constant.rho/constant.rho_w,-data.Ht*constant.rho/constant.rho_w,data.Ht*(1-constant.rho/constant.rho_w),data.Ht*(1-constant.rho/constant.rho_w)+5])
+#ax2.plot(glacier_x,glacier_y,'k')
+#ax2.fill(np.array([-2000,13000,13000,-2000]),np.array([glacier_y[0],glacier_y[0],-600,-600]),'oldlace',edgecolor='k')
+
     
-plt.savefig('fig-steady-state_profile.pdf',format='pdf',dpi=300)
+plt.savefig('fig-glacier_size.pdf',format='pdf',dpi=300)
