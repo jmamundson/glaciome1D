@@ -132,7 +132,7 @@ def set_up_figure():
     
     
     xmax = 20
-    vmax = 300
+    vmax = 200
     
     text_pos_scale = 6.5/3.8
     
@@ -188,8 +188,10 @@ def set_up_figure():
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
     ax5.set_ylabel(r'Speed at $\chi=0.5$ [m/d]')
-    ax5.set_xlim([-2.4,2.4])
+    ax5.set_xlim([-3,3])
+    ax5.set_xticks([-3,0,3])
     ax5.set_ylim([0,vmax])
+    ax5.set_yticks(np.linspace(0,vmax,5,endpoint=True))
     txt = ax5.text(0.05*text_pos_scale,1-0.05*6.5/(2*3.8+2),'e',transform=ax5.transAxes,va='top',ha='left')
     
 
@@ -272,7 +274,7 @@ for j in np.arange(0,len(files)):
         
 
 
-axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.25$'],framealpha=1)
+axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.25$'],framealpha=0,loc='upper right')
 
 ax1, ax2, ax3, ax4, ax5 = axes
 glacier_x = np.array([-1000,0,0,-1000])

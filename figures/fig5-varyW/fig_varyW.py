@@ -319,4 +319,4 @@ cb.set_label('$dW/dx$')
 
 
 
-plt.savefig('fig_varyW.pdf',format='pdf',dpi=300)
+plt.savefig('fig-varyW.pdf',format='pdf',dpi=300)

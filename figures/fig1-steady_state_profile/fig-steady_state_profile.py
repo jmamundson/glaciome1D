@@ -118,7 +118,7 @@ def set_up_figure():
     
     
     xmax = 20
-    vmax = 150
+    vmax = 200
     
     text_pos_scale = 6.5/3.8
     
@@ -127,7 +127,7 @@ def set_up_figure():
     ax1.set_ylabel('Speed [m/d]')
     ax1.set_ylim([0,vmax])
     ax1.set_xlim([0,xmax])
-    ax1.set_yticks(np.linspace(0,vmax,4,endpoint=True))
+    ax1.set_yticks(np.linspace(0,vmax,5,endpoint=True))
     txt = ax1.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'a',transform=ax1.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
 
@@ -161,9 +161,10 @@ def set_up_figure():
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
     ax5.set_ylabel(r'Speed [m/d]')
-    ax5.set_xlim([-2.4,2.4])
+    ax5.set_xlim([-3,3])
+    ax5.set_xticks([-3,0,3])
     ax5.set_ylim([0,vmax])
-    ax5.set_yticks(np.linspace(0,vmax,4,endpoint=True))
+    ax5.set_yticks(np.linspace(0,vmax,5,endpoint=True))
     txt = ax5.text(0.05*text_pos_scale,1-0.05*6.5/(2*3.8+2),'e',transform=ax5.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
 
@@ -213,7 +214,7 @@ def plot_figure(data, axes, color_id, linestyle):
         
         ax5.plot(np.append(y-y[-1],y)*1e-3,np.append(u_transverse,u_transverse[-1::-1])/constant.daysYear,color=cmap(color_id[j]),linestyle=linestyle)
 
-        ax5.legend(('$\chi=0$','$\chi=0.25$','$\chi=0.50$','$\chi=0.75$','$\chi=1$'))
+        ax5.legend(('$\chi=0$','$\chi=0.25$','$\chi=0.50$','$\chi=0.75$','$\chi=1$'),loc='upper right',framealpha=0)
 
 #%%
 files = sorted(glob.glob('./*.pickle'))

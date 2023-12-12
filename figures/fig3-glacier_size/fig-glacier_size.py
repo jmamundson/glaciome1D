@@ -126,14 +126,14 @@ def set_up_figure():
     ax1.set_ylabel('Speed [m/d]')
     ax1.set_ylim([0,vmax])
     ax1.set_xlim([0,xmax])
-    ax1.set_yticks(np.linspace(0,300,4,endpoint=True))
+    ax1.set_yticks(np.linspace(0,200,5,endpoint=True))
     ax1.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'a',transform=ax1.transAxes,va='top',ha='left')
     
     
     ax2 = plt.axes([left+ax_width+xgap, bot+ax_height+ygap, ax_width, ax_height])
     ax2.set_xlabel('Longitudinal coordinate [km]')
     ax2.set_ylabel('Elevation [m]')
-    ax2.set_ylim([-400, 100])
+    ax2.set_ylim([-300, 100])
     ax2.set_xlim([0,xmax])
     txt = ax2.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'b',transform=ax2.transAxes,va='top',ha='left')
     txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
@@ -158,9 +158,11 @@ def set_up_figure():
     
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
-    ax5.set_ylabel(r'Speed [m/d]')
-    ax5.set_xlim([-2.8,2.8])
-    ax5.set_ylim([0,vmax+50])
+    ax5.set_ylabel(r'Speed at $\chi=0.5$ [m/d]')
+    ax5.set_xlim([-3,3])
+    ax5.set_xticks([-3,0,3])
+    ax5.set_ylim([0,vmax])
+    ax5.set_yticks(np.linspace(0,vmax,5,endpoint=True))
     txt = ax5.text(0.05*text_pos_scale,1-0.05*6.5/(2*3.8+2),'e',transform=ax5.transAxes,va='top',ha='left')
     
 
@@ -210,9 +212,9 @@ def plot_figure(data, axes, color_id, linestyle):
     H= np.concatenate(([(data.H[0]+data.H[1])/2], [(data.H[10]+data.H[11])/2], [(data.H[-1]+data.H[-2])/2]))  
     
     
-    chi = np.array([0,0.5,1])
+    chi = np.array([0.5])
     
-    for j in np.arange(0,3):#len(Hd)):
+    for j in np.arange(0,len(chi)):#len(Hd)):
         y, u_transverse, u_mean = data.transverse(chi[j],dimensionless=False)
         U_ind = np.interp(chi[j],data.x,data.U)
     
@@ -221,7 +223,7 @@ def plot_figure(data, axes, color_id, linestyle):
         
         ax5.plot(np.append(y-y[-1],y)*1e-3,np.append(u_transverse,u_transverse[-1::-1])/constant.daysYear,color=cmap(color_id[j]),linestyle=linestyle)
 
-        ax5.legend(('$\chi=0.0$','$\chi=0.5$','$\chi=1.0$'))
+        # ax5.legend(('$\chi=0.0$','$\chi=0.5$','$\chi=1.0$'))
 
 #%%
 files = sorted(glob.glob('./*.pickle'))
@@ -230,6 +232,7 @@ F = np.zeros(len(files))
 Q = np.zeros(len(files))
 axes, color_id = set_up_figure()
 linestyle = ['dotted','--','-']
+
 for j in np.arange(0,len(files)):
     with open(files[j], 'rb') as file:
         data = pickle.load(file)
