@@ -46,7 +46,7 @@ constant = constants()
 
 
 #%% 
-run_simulations = 'n'
+run_simulations = 'y'
 
 if run_simulations == 'y':
     
@@ -274,7 +274,7 @@ for j in np.arange(0,len(files)):
         
 
 
-axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.25$'],framealpha=0,loc='upper right')
+axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.2$'],framealpha=0,loc='upper right')
 
 ax1, ax2, ax3, ax4, ax5 = axes
 glacier_x = np.array([-1000,0,0,-1000])
