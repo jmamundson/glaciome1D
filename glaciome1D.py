@@ -1030,7 +1030,7 @@ class glaciome:
         gg = self.gg[0] # not strictly at x=0 due to staggered grid, but we have set dg'/dx = 0 at x=0 so this is okay
         dUdx = (self.U[1]-self.U[0])/(self.dx*self.L)
         
-        F = -2*H0*self.pressure(H0)*dUdx/gg + H0*self.pressure(H0)
+        F = -2*H0*self.pressure(H0)*dUdx/(gg+dUdx) + H0*self.pressure(H0)
     
         return(F)
 
