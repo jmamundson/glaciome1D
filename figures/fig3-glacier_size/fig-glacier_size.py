@@ -63,14 +63,18 @@ if run_simulations == 'y':
     
     
     
-    for j in np.arange(2,len(size)):
+    for j in np.arange(1,len(size)):
     
         n_pts = 21 # number of grid points
         L = 1e4 # ice melange length
         Ut = terminus_velocity[j] # glacier terminus velocity [m/a]; treated as a constant
         Uc = calving_rate[j] # glacier calving rate [m/a]; treated as a constant
         Ht = terminus_thickness[j] # terminus thickness
-        dt = 0.001
+        # if j==2:
+        #     dt = 0.001
+        # else:
+        #     dt = 0.01
+        dt = 0.01
         
         # specifying fjord geometry
         X_fjord = np.linspace(-200e3,200e3,101)
@@ -80,7 +84,7 @@ if run_simulations == 'y':
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
         data.B = -0.8*constant.daysYear
         data.diagnostic()
-        data.steadystate(method='hybr')
+        data.steadystate(method='lm')
         
         data.save('steady-state_' + size[j] + '.pickle')
 

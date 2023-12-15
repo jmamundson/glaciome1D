@@ -75,7 +75,7 @@ if run_simulations == 'y':
         Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
         Ht = 600 # terminus thickness
         n = 101 # number of time steps
-        dt = 0.1# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+        dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
         
         # specifying fjord geometry
         X_fjord = np.linspace(-200e3,200e3,101)
@@ -84,8 +84,8 @@ if run_simulations == 'y':
         
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
         data.B = -0.6*data.constants.daysYear
-        data.diagnostic(method='hybr')
-        data.steadystate(method='hybr')
+        data.diagnostic()
+        data.steadystate(method='lm')
 
         # data.steadystate(method='lm')
         data.save('steady-state_Wt_' + "{0}".format(Wt) + '.pickle')
@@ -93,7 +93,7 @@ if run_simulations == 'y':
     
     
     
-    for j in np.arange(3,len(dWdx)):
+    for j in np.arange(0,len(dWdx)):
     
         n_pts = 21 # number of grid points
         L = 1e4 # ice melange length
@@ -101,7 +101,7 @@ if run_simulations == 'y':
         Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
         Ht = 600 # terminus thickness
         n = 101 # number of time steps
-        dt = 0.05# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+        dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
         
         # specifying fjord geometry
         X_fjord = np.linspace(-200e3,200e3,101)
@@ -111,7 +111,7 @@ if run_simulations == 'y':
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
         data.B = -0.6*data.constants.daysYear
         data.diagnostic()
-        data.steadystate(method='hybr')
+        data.steadystate(method='lm')
         
         # specifying fjord geometry
         # X_fjord = np.linspace(-200e3,200e3,101)

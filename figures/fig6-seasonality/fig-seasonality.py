@@ -39,6 +39,8 @@ cmap = cmr.get_sub_cmap('viridis', 0, 0.8)
 from glaciome1D import constants
 constant = constants()
 
+run_simulations = 'n'
+
 #%% functions for varying the melt rate and the calving rate
 def Bdot(t,Bdot0):
     # seasonality in melt rate
@@ -68,7 +70,7 @@ def coupled_calving(F,F0,Uc0):
     return(Uc)
 
 #%%
-run_simulations = 'n'
+
 
 if run_simulations == 'y':
     
@@ -76,48 +78,48 @@ if run_simulations == 'y':
 
     # vary melt rates
     # should be same length as starting_files
-    directories = ['low_melt_rate_varyB','medium_melt_rate_varyB','high_melt_rate_varyB']
+    # directories = ['low_melt_rate_varyB','medium_melt_rate_varyB','high_melt_rate_varyB']
 
-    for j in directories:
-        if os.path.exists(j)==False:
-            os.mkdir(j)
+    # for j in directories:
+    #     if os.path.exists(j)==False:
+    #         os.mkdir(j)
 
-    for k in np.arange(0,len(starting_files)):
-        file = open(starting_files[k],'rb')
-        data = pickle.load(file)
-        file.close()
+    # for k in np.arange(0,len(starting_files)):
+    #     file = open(starting_files[k],'rb')
+    #     data = pickle.load(file)
+    #     file.close()
         
-        Bdot0 = data.B/constant.daysYear
+    #     Bdot0 = data.B/constant.daysYear
         
-        data.dt = 0.01
-        T = 5 # years
-        n = int(T/data.dt) # number of time steps
+    #     data.dt = 0.01
+    #     T = 5 # years
+    #     n = int(T/data.dt) # number of time steps
         
-        t = np.linspace(0,T,n+1,endpoint=True)
+    #     t = np.linspace(0,T,n+1,endpoint=True)
         
-        #data.save('seasonality-0pt6/seasonality_000.pickle')
+    #     #data.save('seasonality-0pt6/seasonality_000.pickle')
         
         
-        B = [Bdot(t,Bdot0) for t in t]
-        H0 = np.zeros(n+1)
-        L = np.zeros(n+1)
-        F = np.zeros(n+1)
+    #     B = [Bdot(t,Bdot0) for t in t]
+    #     H0 = np.zeros(n+1)
+    #     L = np.zeros(n+1)
+    #     F = np.zeros(n+1)
         
-        H0[0] = data.H0
-        L[0] = data.L
-        F[0] = data.force()
+    #     H0[0] = data.H0
+    #     L[0] = data.L
+    #     F[0] = data.force()
         
-        for j in np.arange(0,n):
-            print('Time: ' + str(j*data.dt) + ' yr')
-            data.B = Bdot(t[j],Bdot0)
-            data.prognostic(method='hybr')
-            data.save(directories[k] + '/seasonality_' + "{:03d}".format(j) + '.pickle')
-            H0[j+1] = data.H0
-            L[j+1] = data.L
-            F[j+1] = data.force()
-            print('H0: ' + "{:02f}".format(data.H0))
+    #     for j in np.arange(0,n):
+    #         print('Time: ' + str(j*data.dt) + ' yr')
+    #         data.B = Bdot(t[j],Bdot0)
+    #         data.prognostic(method='lm')
+    #         data.save(directories[k] + '/seasonality_' + "{:03d}".format(j) + '.pickle')
+    #         H0[j+1] = data.H0
+    #         L[j+1] = data.L
+    #         F[j+1] = data.force()
+    #         print('H0: ' + "{:02f}".format(data.H0))
         
-        np.savez(directories[k] + '/seasonality.npz',B=B,H0=H0,L=L,F=F)
+    #     np.savez(directories[k] + '/seasonality.npz',B=B,H0=H0,L=L,F=F)
     
     
     # vary calving rates
@@ -154,7 +156,7 @@ if run_simulations == 'y':
         for j in np.arange(0,n):
             print('Time: ' + str(j*data.dt) + ' yr')
             data.Uc = calving(t[j],Uc0)
-            data.prognostic(method='hybr')
+            data.prognostic(method='lm')
             data.save(directories[k] + '/seasonality_' + "{:03d}".format(j) + '.pickle')
             H0[j+1] = data.H0
             L[j+1] = data.L

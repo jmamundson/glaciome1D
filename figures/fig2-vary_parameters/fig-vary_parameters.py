@@ -46,7 +46,7 @@ constant = constants()
 
 
 #%% 
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
@@ -56,7 +56,7 @@ if run_simulations == 'y':
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
     Ht = 600 # terminus thickness
     n = 101 # number of time steps
-    dt = 0.01
+    dt = 0.1
     
     # specifying fjord geometry
     X_fjord = np.linspace(-200e3,200e3,101)
@@ -79,18 +79,19 @@ if run_simulations == 'y':
             data.param.muS = muS
             
         if j==2:
-            d = 10
+            d = 50
             print('d: ' + "{:.03f}".format(d))
             data.param.d = d
-            data.H -= 15
+            data.H = 15
             data.H0 = 1.5*data.H[-1] - 0.5*data.H[-2]
             data.HL = 1.5*data.H[0] - 0.5*data.H[1]
-            data.dt = 0.001
+            #data.dt = 0.001
             
         if j==3:
             b = 5e4
             print('b: ' + "{:.03f}".format(b))
             data.param.b = b
+            data.dt = 0.005
             
         if j==4:
             A = 5
@@ -98,7 +99,7 @@ if run_simulations == 'y':
             data.param.A = A
         
         data.diagnostic() # initialize with diagnostic solve
-        data.steadystate(method='hybr')
+        data.steadystate(method='lm')
         
         data.save('steady-state_Bdot_-0.60_' + file_extensions[j] + '.pickle')    
     

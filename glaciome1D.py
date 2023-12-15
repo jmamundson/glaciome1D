@@ -734,7 +734,7 @@ class glaciome:
         W_ = (W[:-1]+W[1:])/2 # width on the grid, excluding the first and last grid points        
         
         # nu = H**2/gg
-        nu = H**2/(gg - np.diff(self.U)/(self.dx*self.L)) # !!! corrected rheology (3-Dec-2023)
+        nu = H**2/(gg + np.diff(self.U)/(self.dx*self.L)) # !!! corrected rheology (3-Dec-2023)
 
         a_left = nu[:-1]/(dx*L)**2    
         a_left = np.append(a_left,-1)

@@ -60,7 +60,7 @@ if run_simulations == 'y':
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
     Ht = 600 # terminus thickness
     n = 101 # number of time steps
-    dt = 0.1# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+    dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
 
     # specifying fjord geometry
     X_fjord = np.linspace(-200e3,200e3,101)
@@ -74,10 +74,14 @@ if run_simulations == 'y':
     # data = pickle.load(file)
     # file.close()
     
-    for j in np.arange(0,len(B)):
+    for j in np.arange(0,1):#len(B)):
                 
+        if j==0:
+            data.dt = 0.1
+        else:
+            data.dt = dt
         data.B = B[j]
-        data.steadystate(method='hybr')
+        data.steadystate(method='lm')
     
         data.save('steady-state_Bdot_' + "{:.2f}".format(B_days[j]) + '.pickle')
 

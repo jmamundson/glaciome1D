@@ -73,7 +73,7 @@ if run_simulations == 'y':
     data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
     data.B = -0.6*data.constants.daysYear
     data.diagnostic()
-    data.steadystate(method='hybr')
+    data.steadystate(method='lm')
     data.regrid(21)
     data.save('steady-state_Bdot_-0.60.pickle')
     
@@ -81,7 +81,7 @@ if run_simulations == 'y':
     data.transient = 1
     data.B = 0
     data.Uc = 0
-    data.steadystate(method='hybr')
+    data.steadystate(method='lm')
     data.save('quasistatic_Bdot_-0.60.pickle')
         
 
