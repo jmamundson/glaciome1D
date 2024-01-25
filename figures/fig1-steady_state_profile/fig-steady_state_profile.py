@@ -54,9 +54,8 @@ constant = constants()
 run_simulations = 'n'
 
 if run_simulations == 'y':
-    
-    
-    n_pts = 21 # number of grid points
+        
+    n_pts = 51 # number of grid points
     L = 1e4 # ice melange length
     Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
@@ -68,13 +67,12 @@ if run_simulations == 'y':
     X_fjord = np.linspace(-200e3,200e3,101)
     Wt = 4000
     W_fjord = Wt + 0/10000*X_fjord
+    B = -0.6*constant.daysYear
     
     # first run to steady state
-    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-    data.B = -0.6*data.constants.daysYear
-    data.diagnostic()
+    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, B, X_fjord, W_fjord)
+    
     data.steadystate(method='lm')
-    data.regrid(21)
     data.save('steady-state_Bdot_-0.60.pickle')
     
     # then turn off calving and melting
@@ -105,7 +103,7 @@ def set_up_figure():
 
     cm = 1/2.54
     fig_width = 18*cm
-    fig_height = 12*cm
+    fig_height = (12+0.4)*cm
     plt.figure(figsize=(fig_width,fig_height))
     
     
@@ -123,8 +121,8 @@ def set_up_figure():
     text_pos_scale = 6.5/3.8
     
     ax1 = plt.axes([left, bot+ax_height+ygap, ax_width, ax_height])
-    ax1.set_xlabel('Longitudinal coordinate [m]')
-    ax1.set_ylabel('Speed [m/d]')
+    ax1.set_xlabel('Longitudinal coordinate [km]')
+    ax1.set_ylabel('Speed [m d$^{-1}$]')
     ax1.set_ylim([0,vmax])
     ax1.set_xlim([0,xmax])
     ax1.set_yticks(np.linspace(0,vmax,5,endpoint=True))
@@ -144,7 +142,7 @@ def set_up_figure():
     
     ax3 = plt.axes([left, bot, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [km]')
-    ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
+    ax3.set_ylabel('$g^\prime$ [a$^{-1}$]')
     ax3.set_ylim([0, 10])
     ax3.set_xlim([0,xmax])
     txt = ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
@@ -160,7 +158,7 @@ def set_up_figure():
     
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
-    ax5.set_ylabel(r'Speed [m/d]')
+    ax5.set_ylabel(r'Speed [m d$^{-1}$]')
     ax5.set_xlim([-3,3])
     ax5.set_xticks([-3,0,3])
     ax5.set_ylim([0,vmax])
@@ -218,7 +216,8 @@ def plot_figure(data, axes, color_id, linestyle):
 
 #%%
 files = sorted(glob.glob('./*.pickle'))
-#file = files[1]
+files = files[0:2]
+file = files[1]
 
 axes, color_id = set_up_figure()
 linestyle = ['--','-']
@@ -232,6 +231,8 @@ for j in np.arange(len(files)-1, -1, -1):
         L=data.L
         
 ax1, ax2, ax3, ax4, ax5 = axes
+ax2.legend(['steady-state','quasi-static'], loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=5, frameon=True)
+
 # glacier_x = np.array([-1000,0,0,-1000])
 # glacier_y = np.array([-data.Ht*constant.rho/constant.rho_w,-data.Ht*constant.rho/constant.rho_w,data.Ht*(1-constant.rho/constant.rho_w),data.Ht*(1-constant.rho/constant.rho_w)+5])
 # ax2.plot(glacier_x,glacier_y,'k')

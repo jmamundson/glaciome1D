@@ -38,6 +38,7 @@ import glob
 import pickle
 
 import cmasher as cmr
+import shutil
 
 cmap = cmr.get_sub_cmap('viridis', 0, 0.95)
 
@@ -50,13 +51,15 @@ run_simulations = 'n'
 
 if run_simulations == 'y':
     
-    n_pts = 21 # number of grid points
+    shutil.copyfile('../fig1-steady_state_profile/steady-state_Bdot_-0.60.pickle','./steady-state_Bdot_-0.60.pickle')
+    
+    n_pts = 51 # number of grid points
     L = 1e4 # ice melange length
     Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
     Ht = 600 # terminus thickness
     n = 101 # number of time steps
-    dt = 0.1
+    dt = 0.01
     
     # specifying fjord geometry
     X_fjord = np.linspace(-200e3,200e3,101)
@@ -65,13 +68,10 @@ if run_simulations == 'y':
     
     file_extensions = ['','_varymuS','_varyd','_varyb','_varyA']
 
-    for j in np.arange(2,3):    
-        # file = open('steady-state_Bdot_-0.80_31pts.pickle','rb')
-        # data = pickle.load(file)
-        # file.close()
+    for j in np.arange(2,3):   
         
-        data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.B = -0.6*data.constants.daysYear
+        B = -0.6*constant.daysYear
+        data = glaciome(n_pts, dt, L, Ut, Uc, Ht, B, X_fjord, W_fjord)
         
         if j==1:
             muS = 0.2
@@ -79,10 +79,10 @@ if run_simulations == 'y':
             data.param.muS = muS
             
         if j==2:
-            d = 50
+            d = 10
             print('d: ' + "{:.03f}".format(d))
             data.param.d = d
-            data.H = 15
+            data.H = data.H - data.HL + 15
             data.H0 = 1.5*data.H[-1] - 0.5*data.H[-2]
             data.HL = 1.5*data.H[0] - 0.5*data.H[1]
             #data.dt = 0.001
@@ -91,14 +91,14 @@ if run_simulations == 'y':
             b = 5e4
             print('b: ' + "{:.03f}".format(b))
             data.param.b = b
-            data.dt = 0.005
+            #data.dt = 0.005
             
         if j==4:
             A = 5
             print('A: ' + "{:.03f}".format(A))
             data.param.A = A
         
-        data.diagnostic() # initialize with diagnostic solve
+        # data.diagnostic() # initialize with diagnostic solve
         data.steadystate(method='lm')
         
         data.save('steady-state_Bdot_-0.60_' + file_extensions[j] + '.pickle')    
@@ -112,7 +112,7 @@ def set_up_figure():
 
     Returns
     -------
-    axes handles ax1, ax2, ax3, ax4, ax5, and ax_cbar for the 5 axes and colorbar
+    ax1, ax2, ax3, ax4, ax5, and ax_cbar for the 5 axes and colorbar
     '''
     
     color_id = np.linspace(0,1,5)
@@ -120,7 +120,7 @@ def set_up_figure():
 
     cm = 1/2.54
     fig_width = 18*cm
-    fig_height = 12*cm
+    fig_height = (12+0.4)*cm
     plt.figure(figsize=(fig_width,fig_height))
     
     
@@ -138,8 +138,8 @@ def set_up_figure():
     text_pos_scale = 6.5/3.8
     
     ax1 = plt.axes([left, bot+ax_height+ygap, ax_width, ax_height])
-    ax1.set_xlabel('Longitudinal coordinate [m]')
-    ax1.set_ylabel('Speed [m/d]')
+    ax1.set_xlabel('Longitudinal coordinate [km]')
+    ax1.set_ylabel('Speed [m d$^{-1}$]')
     ax1.set_ylim([0,vmax])
     ax1.set_xlim([0,xmax])
     ax1.set_yticks(np.linspace(0,vmax,5,endpoint=True))
@@ -157,7 +157,7 @@ def set_up_figure():
     
     ax3 = plt.axes([left, bot, ax_width, ax_height])
     ax3.set_xlabel('Longitudinal coordinate [km]')
-    ax3.set_ylabel('$g^\prime$ [a$^{-1}]$')
+    ax3.set_ylabel('$g^\prime$ [a$^{-1}$]')
     ax3.set_ylim([0, 10])
     ax3.set_xlim([0,xmax])
     txt = ax3.text(0.05*text_pos_scale,1-0.05*text_pos_scale,'c',transform=ax3.transAxes,va='top',ha='left')
@@ -188,7 +188,7 @@ def set_up_figure():
     
     ax5 = plt.axes([left+2*(ax_width+xgap), bot, ax_width, 2*ax_height+ygap])
     ax5.set_xlabel('Transverse coordinate [km]')
-    ax5.set_ylabel(r'Speed at $\chi=0.5$ [m/d]')
+    ax5.set_ylabel(r'Speed at $\chi=0.5$ [m d$^{-1}$]')
     ax5.set_xlim([-3,3])
     ax5.set_xticks([-3,0,3])
     ax5.set_ylim([0,vmax])
@@ -202,7 +202,7 @@ def set_up_figure():
 
 
 #%%
-def plot_figure(data, axes, color, linestyle, j, zorder):
+def plot_figure(data, axes, color, linestyle, j, zorder, label):
     '''
     Take the current state of the model object and plot the basic figure.
     '''
@@ -223,7 +223,7 @@ def plot_figure(data, axes, color, linestyle, j, zorder):
 
     ax1, ax2, ax3, ax4, ax5 = axes
     ax1.plot(X*1e-3,(U+(data.Ut-data.Uc))/constant.daysYear,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
-    ax2.plot(np.append(X_,X_[::-1])*1e-3,np.append(-constant.rho/constant.rho_w*H,(1-constant.rho/constant.rho_w)*H[::-1]),color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
+    ax2.plot(np.append(X_,X_[::-1])*1e-3,np.append(-constant.rho/constant.rho_w*H,(1-constant.rho/constant.rho_w)*H[::-1]),color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder,label=label)
     ax3.plot(X_*1e-3,gg,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     ax4.plot(X*1e-3,muW,color=plt.cm.viridis(color),linestyle=linestyle,zorder=zorder)
     
@@ -252,7 +252,7 @@ files = sorted(glob.glob('./*.pickle'))
 
 
 axes, color_id = set_up_figure()
-
+label = ['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.2$']
 
 linestyle = ['dotted','--','-']
 for j in np.arange(0,len(files)):
@@ -261,23 +261,30 @@ for j in np.arange(0,len(files)):
         file.close()
         
         if j==0:
-            plot_figure(data,axes,color_id[j],linestyle[2],j,100)
+            plot_figure(data,axes,color_id[j],linestyle[2],j,100,label[j])
             
         elif (j%2)==0:
-            plot_figure(data,axes,color_id[j],linestyle[1],j,1) 
+            plot_figure(data,axes,color_id[j],linestyle[1],j,1,label[j]) 
         else:
-            plot_figure(data,axes,color_id[j],linestyle[0],j,1)
+            plot_figure(data,axes,color_id[j],linestyle[0],j,1,label[j])
         
-        if j==3:
+        if j==2:
             print(data.L)
             axes[1].plot(np.array([data.L/1000,20]),np.array([0,0]),color='k')
 
         
 
 
-axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.2$'],framealpha=0,loc='upper right')
 
 ax1, ax2, ax3, ax4, ax5 = axes
+handles, labels = ax2.get_legend_handles_labels()
+
+ax2.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.3), ncol=5, frameon=True)
+
+
+#axes[4].legend(['default', r'$A=5$', r'$b=5\times 10^4$', r'$d=10$ m', r'$\mu_s=0.2$'],framealpha=0,loc='upper right')
+
+
 glacier_x = np.array([-1000,0,0,-1000])
 glacier_y = np.array([-data.Ht*constant.rho/constant.rho_w,-data.Ht*constant.rho/constant.rho_w,data.Ht*(1-constant.rho/constant.rho_w),data.Ht*(1-constant.rho/constant.rho_w)+5])
 ax2.plot(glacier_x,glacier_y,'k')

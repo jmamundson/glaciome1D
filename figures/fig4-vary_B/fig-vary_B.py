@@ -44,9 +44,8 @@ import cmasher as cmr
 cmap = cmr.get_sub_cmap('viridis', 0, 0.95)
 
 #%%
-run_simulations = 'n'
+run_simulations = 'y'
 
-# copy over 'steady-state_Bdot_-0.80.pickle' from figure 1
 
 if run_simulations == 'y':
     
@@ -54,7 +53,7 @@ if run_simulations == 'y':
     
     B = B_days*constant.daysYear
     
-    n_pts = 21 # number of grid points
+    n_pts = 51 # number of grid points
     L = 1e4 # ice melange length
     Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
     Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
@@ -67,19 +66,11 @@ if run_simulations == 'y':
     Wt = 4000
     W_fjord = Wt + 0/10000*X_fjord
     
-    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-    data.diagnostic()
+    data = glaciome(n_pts, dt, L, Ut, Uc, Ht, B[0], X_fjord, W_fjord)
     
-    # file = open('steady-state_Bdot_-0.90.pickle','rb')
-    # data = pickle.load(file)
-    # file.close()
-    
-    for j in np.arange(0,1):#len(B)):
-                
-        if j==0:
-            data.dt = 0.1
-        else:
-            data.dt = dt
+
+    for j in np.arange(2,len(B)):
+            
         data.B = B[j]
         data.steadystate(method='lm')
     
@@ -112,7 +103,7 @@ xgap = 2*cm/fig_width
 ax1 = plt.axes([left,2*bottom,width,height])
 ax2 = plt.axes([left+width+xgap, 2*bottom, width, height])
 
-ax_cbar = plt.axes([left,bottom,width,cbar_height])
+ax_cbar = plt.axes([left,bottom,2*width+xgap,cbar_height])
 
 linestyles=['-','--']
 
@@ -166,7 +157,7 @@ txt = ax1.text(0.05,0.95,'a',transform=ax1.transAxes,va='top',ha='left')
 txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
 
 ax2.set_xlabel('Melt rate [m d$^{-1}$]')
-ax2.set_ylabel(r'$F/W$ [$\times 10^{-7}$ N m$^{-1}$]')
+ax2.set_ylabel(r'$F/W$ [$\times 10^{7}$ N m$^{-1}$]')
 ax2.text(0.05,0.95,'b',transform=ax2.transAxes,va='top',ha='left')
 ax2.set_xlim([0.4,1.1])
 ax2.set_xticks(np.linspace(0.4,1.1,8,endpoint=True))

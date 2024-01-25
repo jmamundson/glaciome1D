@@ -1,22 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun Aug 27 12:39:00 2023
-
-@author: jason
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Aug 19 19:15:01 2023
-
-@author: jason
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
 Created on Wed Aug 16 14:04:35 2023
 
 @author: jason
@@ -50,79 +34,64 @@ cmap = cmr.get_sub_cmap('viridis', 0, 0.95)
 import glob
 import pickle
 
+import shutil
 constant = constants()
 
 #%%
 
-run_simulations = 'n'
+run_simulations = 'y'
 
 terminus_width = np.linspace(3000,7000,5,endpoint=True)
 dWdx = np.linspace(-0.04,0.04,5)
 
 if run_simulations == 'y':
     
+    shutil.copyfile('../fig1-steady_state_profile/steady-state_Bdot_-0.60.pickle','./steady-state_Wt_4000.0.pickle')
     
-    # file = open('steady-state_Wt_4000.pickle', 'rb')
-    # data = pickle.load(file)
-    # file.close()
+    # n_pts = 51 # number of grid points
+    # L = 1e4 # ice melange length
+    # Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
+    # Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
+    # Ht = 600 # terminus thickness
+    # n = 101 # number of time steps
+    # dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+    # B = -0.6*constant.daysYear
     
-    
-    for j in np.arange(0,len(terminus_width)):
-
-        n_pts = 21 # number of grid points
-        L = 1e4 # ice melange length
-        Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
-        Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
-        Ht = 600 # terminus thickness
-        n = 101 # number of time steps
-        dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+    for j in np.array([4]):#np.array([0,2,3,4]):
+        
+        file = open('./steady-state_Wt_4000.0.pickle','rb')
+        data = pickle.load(file)
+        file.close()
+        
+        if j==4:
+            file = open('./steady-state_Wt_6000.0.pickle','rb')
+            data = pickle.load(file)
+            file.close()
         
         # specifying fjord geometry
-        X_fjord = np.linspace(-200e3,200e3,101)
-        Wt = terminus_width[j]
-        W_fjord = Wt + 0/10000*X_fjord
+        data.Wt = terminus_width[j]
+        data.W_fjord = data.Wt + 0/10000*data.X_fjord
+            
+        print('W_t: ' + "{0}".format(data.Wt))
         
-        data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.B = -0.6*data.constants.daysYear
-        data.diagnostic()
         data.steadystate(method='lm')
 
         # data.steadystate(method='lm')
-        data.save('steady-state_Wt_' + "{0}".format(Wt) + '.pickle')
+        data.save('steady-state_Wt_' + "{0}".format(data.Wt) + '.pickle')
 
-    
-    
     
     for j in np.arange(0,len(dWdx)):
     
-        n_pts = 21 # number of grid points
-        L = 1e4 # ice melange length
-        Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
-        Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
-        Ht = 600 # terminus thickness
-        n = 101 # number of time steps
-        dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
-        
+        file = open('./steady-state_Wt_4000.0.pickle','rb')
+        data = pickle.load(file)
+        file.close()    
+    
         # specifying fjord geometry
-        X_fjord = np.linspace(-200e3,200e3,101)
-        Wt = 4000
-        W_fjord = Wt + dWdx[j]*X_fjord
+        W_fjord = data.Wt + dWdx[j]*data.X_fjord
+       
+        print('dW/dx: ' + "{0}".format(dWdx[j]))
         
-        data = glaciome(n_pts, dt, L, Ut, Uc, Ht, X_fjord, W_fjord)
-        data.B = -0.6*data.constants.daysYear
-        data.diagnostic()
         data.steadystate(method='lm')
-        
-        # specifying fjord geometry
-        # X_fjord = np.linspace(-200e3,200e3,101)
-        # Wt = terminus_width[j]
-        # W_fjord = Wt + dWdx[j]*X_fjord
-        
-        # data.W_fjord = W_fjord        
-        # data.width_interpolator = interp1d(data.X_fjord, data.W_fjord, fill_value='extrapolate') 
-        # data.W = np.array([data.width_interpolator(x) for x in data.X_])
-        # data.W0 = data.width_interpolator(data.X[0]) # width at X=0
-        # data.WL = data.width_interpolator(data.X[-1]) # width at X=L
         
         # data.steadystate(method='lm')
         data.save('steady-state_dWdx_' + "{0}".format(dWdx[j]) + '.pickle')
@@ -156,15 +125,15 @@ ax2 = plt.axes([left+width+xgap, 2*bottom+(height+2*bottom), width, height])
 ax3 = plt.axes([left,2*bottom, width,height])
 ax4 = plt.axes([left+width+xgap, 2*bottom, width, height])
 
-ax1_cbar = plt.axes([left,bottom+(height+2*bottom),width,cbar_height])
-ax3_cbar = plt.axes([left,bottom,width,cbar_height])
+ax1_cbar = plt.axes([left,bottom+(height+2*bottom),2*width+xgap,cbar_height])
+ax3_cbar = plt.axes([left,bottom,2*width+xgap,cbar_height])
 
 linestyles=['-','--']
 
 # first files_W
 
 n = len(files_W)
-color_id = np.linspace(0,1,len(files_W),endpoint=True)
+color_id = np.linspace(0,1,len(files_dWdx),endpoint=True)
 
 
 
@@ -226,7 +195,7 @@ txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
 
 
 ax2.set_xlabel('$W$ [m]')
-ax2.set_ylabel(r'$F/W$ [$\times 10^{-7}$ N m$^{-1}$]')
+ax2.set_ylabel(r'$F/W$ [$\times 10^{7}$ N m$^{-1}$]')
 ax2.text(0.05,0.95,'b',transform=ax2.transAxes,va='top',ha='left')
 ax2.set_xlim([2000,8000])
 #ax2.set_xticks(np.linspace(0.4,1.1,8,endpoint=True))
@@ -298,7 +267,7 @@ txt.set_path_effects([PathEffects.withStroke(linewidth=2, foreground='w')])
 
 
 ax4.set_xlabel('$dW/dx$')
-ax4.set_ylabel(r'$F/W$ [$\times 10^{-7}$ N m$^{-1}$]')
+ax4.set_ylabel(r'$F/W$ [$\times 10^{7}$ N m$^{-1}$]')
 ax4.text(0.05,0.95,'d',transform=ax4.transAxes,va='top',ha='left')
 ax4.set_xlim([-0.05,0.05])
 #ax2.set_xticks(np.linspace(0.4,1.1,8,endpoint=True))

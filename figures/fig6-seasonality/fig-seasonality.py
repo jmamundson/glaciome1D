@@ -33,6 +33,7 @@ import glob
 import pickle
 import os
 import cmasher as cmr
+import shutil
 
 cmap = cmr.get_sub_cmap('viridis', 0, 0.8)
 
@@ -74,52 +75,55 @@ def coupled_calving(F,F0,Uc0):
 
 if run_simulations == 'y':
     
+    shutil.copyfile('../fig4-vary_B/steady-state_Bdot_-0.60.pickle','./steady-state_Bdot_-0.60.pickle')
+    shutil.copyfile('../fig4-vary_B/steady-state_Bdot_-0.70.pickle','./steady-state_Bdot_-0.70.pickle')
+    shutil.copyfile('../fig4-vary_B/steady-state_Bdot_-0.80.pickle','./steady-state_Bdot_-0.80.pickle')
+    
+    
+    
     starting_files = sorted(glob.glob('*.pickle')) # copied output files from fig 4
 
     # vary melt rates
     # should be same length as starting_files
-    # directories = ['low_melt_rate_varyB','medium_melt_rate_varyB','high_melt_rate_varyB']
+    directories = ['low_melt_rate_varyB','medium_melt_rate_varyB','high_melt_rate_varyB']
 
-    # for j in directories:
-    #     if os.path.exists(j)==False:
-    #         os.mkdir(j)
+    dt = 0.01
+    T = 3 # years
+    n = int(T/dt) # number of time steps
+    
+    t = np.linspace(0,T,n+1,endpoint=True)
 
-    # for k in np.arange(0,len(starting_files)):
-    #     file = open(starting_files[k],'rb')
-    #     data = pickle.load(file)
-    #     file.close()
+    for j in directories:
+        if os.path.exists(j)==False:
+            os.mkdir(j)
+
+    for k in np.arange(0,len(starting_files)):
+        file = open(starting_files[k],'rb')
+        data = pickle.load(file)
+        file.close()
+        data.dt = dt
+        Bdot0 = data.B/constant.daysYear
         
-    #     Bdot0 = data.B/constant.daysYear
+        B = [Bdot(t,Bdot0) for t in t]
+        H0 = np.zeros(n+1)
+        L = np.zeros(n+1)
+        F = np.zeros(n+1)
         
-    #     data.dt = 0.01
-    #     T = 5 # years
-    #     n = int(T/data.dt) # number of time steps
+        H0[0] = data.H0
+        L[0] = data.L
+        F[0] = data.force()
         
-    #     t = np.linspace(0,T,n+1,endpoint=True)
+        for j in np.arange(0,n):
+            print('Time: ' + str(j*data.dt) + ' yr')
+            data.B = Bdot(t[j],Bdot0)
+            data.prognostic(method='lm')
+            data.save(directories[k] + '/seasonality_' + "{:03d}".format(j) + '.pickle')
+            H0[j+1] = data.H0
+            L[j+1] = data.L
+            F[j+1] = data.force()
+            print('H0: ' + "{:02f}".format(data.H0))
         
-    #     #data.save('seasonality-0pt6/seasonality_000.pickle')
-        
-        
-    #     B = [Bdot(t,Bdot0) for t in t]
-    #     H0 = np.zeros(n+1)
-    #     L = np.zeros(n+1)
-    #     F = np.zeros(n+1)
-        
-    #     H0[0] = data.H0
-    #     L[0] = data.L
-    #     F[0] = data.force()
-        
-    #     for j in np.arange(0,n):
-    #         print('Time: ' + str(j*data.dt) + ' yr')
-    #         data.B = Bdot(t[j],Bdot0)
-    #         data.prognostic(method='lm')
-    #         data.save(directories[k] + '/seasonality_' + "{:03d}".format(j) + '.pickle')
-    #         H0[j+1] = data.H0
-    #         L[j+1] = data.L
-    #         F[j+1] = data.force()
-    #         print('H0: ' + "{:02f}".format(data.H0))
-        
-    #     np.savez(directories[k] + '/seasonality.npz',B=B,H0=H0,L=L,F=F)
+        np.savez(directories[k] + '/seasonality.npz',B=B,H0=H0,L=L,F=F)
     
     
     # vary calving rates
@@ -134,14 +138,8 @@ if run_simulations == 'y':
         file = open(starting_files[k],'rb')
         data = pickle.load(file)
         file.close()
-        
+        data.dt = dt
         Uc0 = data.Uc
-        
-        data.dt = 0.01
-        T = 5 # years
-        n = int(T/data.dt) # number of time steps
-        
-        t = np.linspace(0,T,n+1,endpoint=True)
         
         Uc = [calving(t,Uc0) for t in t]
         
@@ -175,14 +173,8 @@ if run_simulations == 'y':
     file = open(starting_files[1],'rb')
     data = pickle.load(file)
     file.close()
-    
+    data.dt = dt
     Bdot0 = data.B/constant.daysYear
-    
-    data.dt = 0.01
-    T = 5 # years
-    n = int(T/data.dt) # number of time steps
-    
-    t = np.linspace(0,T,n+1,endpoint=True)
     
     B = [Bdot(t,Bdot0) for t in t]
     H0 = np.zeros(n+1)
@@ -237,8 +229,8 @@ ax2 = plt.axes([left+width+xgap, bottom+height+ygap, width, height])
 ax3 = plt.axes([left, bottom, width, height])
 ax4 = plt.axes([left+width+xgap, bottom, width, height])
 
-ax1.set_xlim([1.75,3.75])
-ax1.set_xticks(np.linspace(1.75,3.75,5,endpoint=True))
+ax1.set_xlim([0.75,2.75])
+ax1.set_xticks(np.linspace(0.75,2.75,5,endpoint=True))
 ax1.set_xticklabels(np.linspace(0,2,5,endpoint=True))
 ax1.set_ylim([0.3,1.1])
 ax1.set_yticks(np.linspace(0.3,1.1,5,endpoint=True))
@@ -248,7 +240,8 @@ ax1.set_ylabel('Melt rate [m d$^{-1}$]')
 ax1_twin = ax1.twinx()
 ax1_twin.set_ylim([0,2])
 ax1_twin.set_yticks(np.array([0,1,2]))
-ax1_twin.set_ylabel('\n $F/W$ [$10^7$ N/m]')
+
+ax1_twin.set_ylabel('\n$F/W$ [$\\times 10^{7}$ N m$^{-1}$]')
 ax1.text(0.05,1-0.05,'a',transform=ax1.transAxes,va='top',ha='left')
 
 ax2.set_xlim([0.3,1.1])
@@ -258,8 +251,8 @@ ax2.set_ylim([0,2])
 ax2.set_yticks(np.array([0,1,2]))
 ax2.text(0.05,1-0.05,'b',transform=ax2.transAxes,va='top',ha='left')
 
-ax3.set_xlim([1.75,3.75])
-ax3.set_xticks(np.linspace(1.75,3.75,5,endpoint=True))
+ax3.set_xlim([0.75,2.75])
+ax3.set_xticks(np.linspace(0.75,2.75,5,endpoint=True))
 ax3.set_xticklabels(np.linspace(0,2,5,endpoint=True))
 ax3.set_ylim([5000,7000])
 ax3.set_yticks(np.linspace(5000,7000,5,endpoint=True))
@@ -268,7 +261,7 @@ ax3.set_ylabel('Calving rate [m a$^{-1}$]')
 ax3_twin = ax3.twinx()
 ax3_twin.set_ylim([0,2])
 ax3_twin.set_yticks(np.array([0,1,2]))
-ax3_twin.set_ylabel('\n $F/W$ [$10^7$ N/m]')
+ax3_twin.set_ylabel('\n$F/W$ [$\\times 10^{7}$ N m$^{-1}$]')
 ax3.text(0.05,1-0.05,'c',transform=ax3.transAxes,va='top',ha='left')
 
 ax4.set_xlim([5000,7000])
@@ -279,7 +272,7 @@ ax4.text(0.05,1-0.05,'d',transform=ax4.transAxes,va='top',ha='left')
 
 ### melting only
 dt = 0.01
-T = 5 # years
+T = 3 # years
 n = int(T/dt) # number of time steps
 t = np.linspace(0,T,n+1)
 
