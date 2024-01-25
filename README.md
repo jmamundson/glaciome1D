@@ -5,6 +5,7 @@ Using the model involves creating an instance of the glaciome class, which conta
 
 
 References:
+
 Henann, D. L. and Kamrin, K.: A predictive, size-dependent continuum model for dense granular flows, Proc. Nat. Acad. Sci., 110, 6730–6735, https://doi.org/10.1073/pnas.1219153110, 2013.
 
 Schoof, C.: Ice sheet grounding line dynamics: Steady states, stability, and hysteresis, J. Geophys. Res., 112, F03S28, https://doi.org/10.1029/2006JF000664, 2007.
