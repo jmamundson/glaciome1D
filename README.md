@@ -2,9 +2,11 @@
 
 Using the model involves creating an instance of the glaciome class, which contains information on the glacier velocity, viscosity (granular fluidity), and geometry as well as model parameters and various external forcings. The glaciome class includes several basic and easy to use functions, such as: self.diagnostic(), self.prognostic(), self.steadystate(), self.save().
 
-
+The model physics and numerics are described in detail in Amundson et al. (in review).
 
 References:
+
+Amundson, J.M., A.A. Robel, J.C. Burton, and K. Nissanka, A quasi-one-dimensional ice mélange flow model based on continuum descriptions of granular materials, submitted to The Cryosphere. 
 
 Henann, D. L. and Kamrin, K.: A predictive, size-dependent continuum model for dense granular flows, Proc. Nat. Acad. Sci., 110, 6730–6735, https://doi.org/10.1073/pnas.1219153110, 2013.
 
