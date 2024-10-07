@@ -62,7 +62,7 @@ param = parameters()
 #%%
 class glaciome:
     '''
-    The model class contains model variables, which simplifies passing variables
+    The glaciome class contains model variables, which simplifies passing variables
     into and out of functions, and methods for diagnostic, prognostic, and 
     steady-state solves.
     '''
@@ -756,7 +756,7 @@ class glaciome:
         
         gg = np.linalg.solve(D,f) # solve for granular fluidity
 
-        	# NEW APPROACH: make this work???
+        # NEW APPROACH: make this work???
         # u = cumtrapz(2*mu*gg, y, initial=0)
         # transform double integral using volterra integral equation
         # u_mean = 2/W*trapz(2*mu*gg*(y[-1]-y),y)
