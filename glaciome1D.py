@@ -588,10 +588,9 @@ class glaciome:
 
         self.mu = mu
         
-        # np.diff(self.U)/np.diff(self.x*self.L)
-        
+                
         exx = np.diff(self.U)/(self.dx*self.L)
-        #gamma = 1 + exx/(self.gg-exx)
+      
         gamma = self.gg/(self.gg+exx)
         
         g_loc = constant.secsYear*np.sqrt(self.pressure(H)*gamma/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
@@ -728,8 +727,8 @@ class glaciome:
     
         y_c = W/2*(1-self.param.muS/muW) # critical value of y for which mu is no longer greater 
         # than muS; although flow occurs below this critical value, it is needed for 
-        # computing g_loc (below)
-        
+        # computing g_loc (below)     
+                
         g_loc = np.zeros(len(y))
         g_loc[y<y_c] = constant.secsYear*np.sqrt(self.pressure(H)/(constant.rho*d**2))*(mu[y<y_c]-self.param.muS)/(mu[y<y_c]*self.param.b) # local granular fluidity
        
