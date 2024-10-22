@@ -20,7 +20,7 @@ import matplotlib
 
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 from glaciome1D import glaciome, constants
 import matplotlib.patheffects as PathEffects
 
@@ -69,7 +69,7 @@ if run_simulations == 'y':
     data = glaciome(n_pts, dt, L, Ut, Uc, Ht, B[0], X_fjord, W_fjord)
     
 
-    for j in np.arange(2,len(B)):
+    for j in np.arange(0,2):
             
         data.B = B[j]
         data.steadystate(method='lm')
@@ -81,8 +81,6 @@ if run_simulations == 'y':
 
 #%%
 files = sorted(glob.glob('*.pickle'))
-#files = files[10:]
-#files = files[::5]
 
 
 n = len(files)

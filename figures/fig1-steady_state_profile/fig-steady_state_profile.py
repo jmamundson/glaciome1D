@@ -28,10 +28,9 @@ import matplotlib
 import matplotlib.patheffects as PathEffects
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 from glaciome1D import constants, glaciome
 
-import os
 
 matplotlib.rc('lines',linewidth=1) 
 
@@ -51,7 +50,7 @@ import pickle
 constant = constants()
 
 #%%
-run_simulations = 'n'
+run_simulations = 'y'
 
 if run_simulations == 'y':
         

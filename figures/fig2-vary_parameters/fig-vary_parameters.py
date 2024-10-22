@@ -20,8 +20,8 @@ import matplotlib
 
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
-from glaciome1D import glaciome, basic_figure, plot_basic_figure, constants
+sys.path.append('/hdd/glaciome/models/glaciome1D')
+from glaciome1D import glaciome, constants
 import matplotlib.patheffects as PathEffects
 
 
@@ -47,7 +47,7 @@ constant = constants()
 
 
 #%% 
-run_simulations = 'n'
+run_simulations = 'y'
 
 if run_simulations == 'y':
     
@@ -68,7 +68,7 @@ if run_simulations == 'y':
     
     file_extensions = ['','_varymuS','_varyd','_varyb','_varyA']
 
-    for j in np.arange(2,3):   
+    for j in np.array([1,3,4]):#np.arange(2,3):   
         
         B = -0.6*constant.daysYear
         data = glaciome(n_pts, dt, L, Ut, Uc, Ht, B, X_fjord, W_fjord)

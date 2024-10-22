@@ -12,7 +12,7 @@ import matplotlib
 
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 import glaciome1D
 import matplotlib.patheffects as PathEffects
 
@@ -40,7 +40,7 @@ cmap = cmr.get_sub_cmap('viridis', 0, 0.8)
 from glaciome1D import constants
 constant = constants()
 
-run_simulations = 'n'
+run_simulations = 'y'
 
 #%% functions for varying the melt rate and the calving rate
 def Bdot(t,Bdot0):

@@ -591,7 +591,8 @@ class glaciome:
         # np.diff(self.U)/np.diff(self.x*self.L)
         
         exx = np.diff(self.U)/(self.dx*self.L)
-        gamma = 1 + exx/(self.gg-exx)
+        #gamma = 1 + exx/(self.gg-exx)
+        gamma = self.gg/(self.gg+exx)
         
         g_loc = constant.secsYear*np.sqrt(self.pressure(H)*gamma/(constant.rho*self.param.d**2*self.param.Hscale))*(1-self.param.muS/mu)/(self.param.b)
         

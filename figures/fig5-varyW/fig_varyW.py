@@ -12,7 +12,7 @@ import matplotlib
 import matplotlib.patheffects as PathEffects
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 from glaciome1D import glaciome, constants
 
 import os
@@ -40,7 +40,6 @@ constant = constants()
 #%%
 
 run_simulations = 'y'
-
 terminus_width = np.linspace(3000,7000,5,endpoint=True)
 dWdx = np.linspace(-0.04,0.04,5)
 
@@ -48,16 +47,16 @@ if run_simulations == 'y':
     
     shutil.copyfile('../fig1-steady_state_profile/steady-state_Bdot_-0.60.pickle','./steady-state_Wt_4000.0.pickle')
     
-    # n_pts = 51 # number of grid points
-    # L = 1e4 # ice melange length
-    # Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
-    # Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
-    # Ht = 600 # terminus thickness
-    # n = 101 # number of time steps
-    # dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
-    # B = -0.6*constant.daysYear
+    n_pts = 51 # number of grid points
+    L = 1e4 # ice melange length
+    Ut = 0.6e4 # glacier terminus velocity [m/a]; treated as a constant
+    Uc = 0.6e4 # glacier calving rate [m/a]; treated as a constant
+    Ht = 600 # terminus thickness
+    n = 101 # number of time steps
+    dt = 0.01# 1/(n_pts-1)/10 # time step [a]; needs to be quite small for this to work
+    B = -0.6*constant.daysYear
     
-    for j in np.array([4]):#np.array([0,2,3,4]):
+    for j in np.arange(0,len(terminus_width)): #np.array([4]):#np.array([0,2,3,4]):
         
         file = open('./steady-state_Wt_4000.0.pickle','rb')
         data = pickle.load(file)
@@ -87,8 +86,9 @@ if run_simulations == 'y':
         file.close()    
     
         # specifying fjord geometry
-        W_fjord = data.Wt + dWdx[j]*data.X_fjord
-       
+        data.Wt = data.W0
+        data.W_fjord = data.Wt + dWdx[j]*data.X_fjord
+        
         print('dW/dx: ' + "{0}".format(dWdx[j]))
         
         data.steadystate(method='lm')

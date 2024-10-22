@@ -12,7 +12,7 @@ import matplotlib
 import matplotlib.patheffects as PathEffects
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 from glaciome1D import constants, glaciome, basic_figure, plot_basic_figure
 
 import os
@@ -36,7 +36,7 @@ import pickle
 constant = constants()
 
 #%% 
-run_simulations = 'n'
+run_simulations = 'y'
 
 if run_simulations == 'y':
       
@@ -69,12 +69,7 @@ if run_simulations == 'y':
             data.Uc = Uc
             data.Ht = Ht
             data.W_fjord = terminus_width[j] + 0/10000*X_fjord
-        # data.diagnostic(method='lm')
-        # data.steadystate(method='lm')
         
-        # data.regrid(51)
-        
-        #data.diagnostic(method='lm')
         data.steadystate(method='lm')
         
         
