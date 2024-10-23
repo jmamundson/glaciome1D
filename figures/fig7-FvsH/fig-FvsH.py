@@ -12,7 +12,7 @@ import matplotlib
 
 import sys
 
-sys.path.append('/home/jason/projects/glaciome/glaciome1D')
+sys.path.append('/hdd/glaciome/models/glaciome1D')
 import glaciome1D
 import matplotlib.patheffects as PathEffects
 
@@ -72,9 +72,9 @@ def set_up_figure():
 #%%
 ax = set_up_figure()
 
-files_B = sorted(glob.glob('../fig6-seasonality/old/*varyB/*npz')) 
-files_calving = sorted(glob.glob('../fig6-seasonality/old/*varyUc/*npz'))
-file_coupled = '../fig6-seasonality/old/medium_melt_rate_varyBandUc/seasonality.npz'
+files_B = sorted(glob.glob('../fig6-seasonality/*varyB/*npz')) 
+files_calving = sorted(glob.glob('../fig6-seasonality/*varyUc/*npz'))
+file_coupled = '../fig6-seasonality/medium_melt_rate_varyBandUc/seasonality.npz'
 
 color_id = np.linspace(0,1,3)
 
@@ -95,7 +95,7 @@ data = np.load(file_coupled)
 ax.loglog(data['H0'][::n], data['F'][::n]*1e-7, '.', alpha=0.5, markersize=2, color=cmap(color_id[1]))
 
 
-files_steadystate = sorted(glob.glob('../fig4-vary_B/old/*pickle'))
+files_steadystate = sorted(glob.glob('../fig4-vary_B/*pickle'))
 H0 = np.zeros(len(files_steadystate))
 F = np.zeros(len(files_steadystate))
 for j in np.arange(0,len(files_steadystate)):
