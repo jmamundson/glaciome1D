@@ -88,9 +88,6 @@ class glaciome:
         self.constants = constants()
         self.param = parameters()
         
-        # set the specific mass balance rate (treated as spatially constant)
-        self.B = B
-        
         # unitless grid and staggered grid
         self.x = np.linspace(0,1,n_pts)
         self.dx = self.x[1]
@@ -100,6 +97,9 @@ class glaciome:
         self.L = L
         self.X = self.x*L
         self.X_ = self.x_*L
+
+        # set the specific mass balance rate (initially treated as spatially constant)
+        self.B = B*np.ones(len(self.x_))
 
         # create width interpolator and find width at initial grid points
         self.X_fjord = X_fjord
@@ -258,6 +258,8 @@ class glaciome:
         
         self.X[0] += (self.Ut-self.Uc)*self.dt # use an explicit time step to find new position X0
         
+
+            
         UggmuWHL = np.concatenate((self.U,self.gg,self.muW,self.H,[self.L])) # starting point for solving the differential equations
         
         if method=='hybr':
@@ -285,7 +287,9 @@ class glaciome:
         
         self.redimensionalize()
     
-        
+    
+
+    
     def regrid(self, n_pts):
         '''
         It is sometimes helpful to spin up the model with a coarse grid (e.g., 
@@ -343,7 +347,7 @@ class glaciome:
         
         
         flag = int(0)
-        #while np.abs(np.abs(dLdt))>10: # !!! may need to adjust if final solution looks noisy      
+        
         while flag < 3:
             
             self.prognostic(method=method)
@@ -467,7 +471,10 @@ class glaciome:
     
         self.dLdt = self.transient*(self.L-L_prev)/self.dt
     
-        # Update the dimensional grid and the width
+        # Update the grid and the width
+        # The model variables were non-dimensionalized prior to this step, as 
+        # was the width interpolator. Therefore we need to pass a dimensionless
+        # grid into the interpolator.
         self.X = self.x*self.L # !!! assumes that the terminus position is fixed; also works if the fjord width is constant
         self.X_ = (self.X[:-1]+self.X[1:])/2
         self.W = self.width_interpolator(self.X_)
@@ -477,6 +484,15 @@ class glaciome:
         self.WL = self.width_interpolator(self.X[-1])
         self.H0 = 1.5*self.H[0]-0.5*self.H[1]
         self.HL = 1.5*self.H[-1]-0.5*self.H[-2]
+        
+        # If the balance rate is determined by an external model, then we need to 
+        # update it so that it is interpolated onto the staggered grid. The 
+        # interpolator takes the dimensionless grid coordinates and returns the
+        # dimensionless balance rate.
+        if hasattr(self, 'X_externalGrid'):
+            B_interpolator = interp1d(self.X_externalGrid/self.param.Lscale, self.B_externalGrid/self.param.Bscale, fill_value='extrapolate')  # x and B would be the coordinates and melt rate from the ocean model, in dimensional units
+            self.B = np.array([B_interpolator(x) for x in self.X_]) # creates an array of melt rates on the staggered grid
+            
         
         # compute residuals of velocity and granular fluidity differential equations
         resU = self.__calc_U(self.U) 
