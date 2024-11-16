@@ -47,7 +47,7 @@ constant = constants()
 
 
 #%% 
-run_simulations = 'y'
+run_simulations = 'n'
 
 if run_simulations == 'y':
     
