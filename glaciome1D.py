@@ -287,6 +287,9 @@ class glaciome:
         # Update the time stored within the model object.
         self.t += self.dt
 
+        if self.H[0]<self.Ht:
+            print('Ice melange thickness exceeds glacier terminus thickness.')
+            sys.exit()
 
     
     def regrid(self, n_pts):
