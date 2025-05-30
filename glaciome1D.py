@@ -281,13 +281,12 @@ class glaciome:
         
         self.X = self.X*self.param.Lscale
         self.X_ = self.X_*self.param.Lscale
-        
-        # Update the time stored within the model object.
-        self.t += self.dt
-        
+            
         self.redimensionalize()
     
-    
+        # Update the time stored within the model object.
+        self.t += self.dt
+
 
     
     def regrid(self, n_pts):
